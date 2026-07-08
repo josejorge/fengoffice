@@ -1,9 +1,10 @@
 <?php
 
   /**
-  * Dimensions
+  * Dimensions Model
   *
-  * @author Diego Castiglioni <diego.castiglioni@fengoffice.com>
+  * @author Feng Office
+  * 
   */
   class Dimensions extends BaseDimensions {
     
@@ -13,12 +14,21 @@
   	static function getDimensionById($id) {
   		$dim = array_var(self::$dimensions_by_id, $id);
   		if (!$dim instanceof Dimension) {
-  			$dim = Dimensions::findById($id);
+  			$dim = Dimensions::instance()->findById($id);
   			if ($dim instanceof Dimension) self::$dimensions_by_id[$id] = $dim;
   		}
   		return $dim;
   	}
     
+  	
+  	/**
+  	 *
+  	 * Returns list of Dimensions associated to a dimension (and? or? both?) object types
+  	 * @param $associated_dimension_id
+  	 * @param $associated_object_type
+  	 * @param $get_properties
+  	 * 
+  	 */
   	static function getAssociatedDimensions($associated_dimension_id, $associated_object_type, $get_properties = true) {
   		
   		if ($get_properties) {
@@ -32,7 +42,7 @@
   		}
   		
   		$search_condition = "`$dim_field` = $associated_dimension_id AND `$ot_field` = $associated_object_type";
-  		$associations = DimensionMemberAssociations::findAll(array('conditions' => $search_condition));
+  		$associations = DimensionMemberAssociations::instance()->findAll(array('conditions' => $search_condition));
   		// TODO: Hacerlo recursivo cuando get_properties = true
   		
   		$dimensions = array();
@@ -43,7 +53,7 @@
   	}
   	
 
-
+	static private $allowed_dimensions_by_type_cache = array();
 	/**
 	 * 
 	 * Returns list of Dimensions where objects with $content_object_type_id can be located
@@ -51,11 +61,29 @@
 	 * @author Pepe
 	 */
 	static function getAllowedDimensions($content_object_type_id) {
+
+		// try to get the data from cache
+		$dims = array_var(self::$allowed_dimensions_by_type_cache, $content_object_type_id);
+		if ($dims) {
+			return $dims;
+		}
+
+		// if not in cache then get it from db and store in cache var
+
 		$enabled_dimensions_sql = "AND false";
 		$enabled_dimensions_ids = implode(',', config_option('enabled_dimensions'));
 		if ($enabled_dimensions_ids != "") {
 			$enabled_dimensions_sql = "AND d.id IN ($enabled_dimensions_ids)";
 		}
+		
+		//@ToDo: If advanced_core is activated, filter out the 'hidden' (not related) dimensions to the object_type
+		//Hook: 
+		//INNER JOIN fo_dimension_content_object_options dcoo ON d.id = dcoo.dimension_id
+		//and dcoo.content_object_type_id = $content_object_type_id
+		//and dcoo.option = "hide_member_selector_in_forms"
+		//and dcoo.value = 0
+		    
+		
 		$sql = "
 			SELECT
 				dotc.dimension_id AS dimension_id,
@@ -72,7 +100,7 @@
 				INNER JOIN ".TABLE_PREFIX."object_types t ON t.id = dotc.dimension_object_type_id
 			
 			WHERE 
-				content_object_type_id = $content_object_type_id
+				dotc.content_object_type_id = $content_object_type_id
 				$enabled_dimensions_sql
 			GROUP BY dimension_id
 			ORDER BY is_required DESC, d.default_order ASC, dimension_name ASC
@@ -80,7 +108,12 @@
 		";
 		$dimensions = array();
 		$res= DB::execute($sql);
-		return $res->fetchAll();
+		$dims = $res->fetchAll();
+
+		// store in cache var
+		self::$allowed_dimensions_by_type_cache[$content_object_type_id] = $dims;
+
+		return $dims;
 	}
 	
 	/**
@@ -88,11 +121,32 @@
 	 */
 	static function findByCode($code) {
 		if (count(self::$dimensions_by_code) == 0) {
-			$dims = Dimensions::findAll();
+			$dims = Dimensions::instance()->findAll();
 			foreach ($dims as $dim) self::$dimensions_by_code[$dim->getCode()] = $dim;
 		}
 		return array_var(self::$dimensions_by_code, $code);
 	}
 
     
+
+	static function getSmallDimensions($max_size = 500) {
+
+		$dimension_ids = array();
+		$enabled_dimension_ids = config_option('enabled_dimensions');
+
+		$rows = DB::executeAll("
+			select dimension_id, count(id) as size
+			from ".TABLE_PREFIX."members 
+			group by dimension_id
+		");
+
+		foreach ($rows as $row) {
+			if (in_array($row['dimension_id'], $enabled_dimension_ids) && $row['size'] < 500) {
+				$dimension_ids[] = $row['dimension_id'];
+			}
+		}
+
+		return $dimension_ids;
+	}
+
   } // Dimensions 

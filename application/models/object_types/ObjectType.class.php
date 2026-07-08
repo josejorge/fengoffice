@@ -34,8 +34,10 @@ class ObjectType extends BaseObjectType {
 	function getIsLinkableObjectType() {
 		$handler_class = $this->getHandlerClass();
 		try {
-			eval('$item_class = '.$handler_class.'::instance()->getItemClass();  $instance = new $item_class();');
-			return $instance && $instance->isLinkableObject();
+			if (class_exists($handler_class)) {
+				eval('$item_class = '.$handler_class.'::instance()->getItemClass();  $instance = new $item_class();');
+			}
+			return isset($instance) && $instance->isLinkableObject();
 		}catch(Exception $e) {
 			return false ;
 		}
@@ -57,6 +59,49 @@ class ObjectType extends BaseObjectType {
 		}
 		return $color;
 	}
+	
+	
+	
+	function getObjectTypeController() {
+		$controller = "";
+		if ($this->getType() == 'content_object') {
+			$controller = $this->getName();
+			switch ($this->getName()) {
+				case 'weblink': $controller = 'webpage'; break;
+				case 'file': $controller = 'files'; break;
+			}
+		}
+		return $controller;
+	}
+	
+	
+	function getObjectTypeAddAction() {
+		$action = "";
+		if ($this->getType() == 'content_object') {
+			$action = 'add';
+			switch ($this->getName()) {
+				case 'task': $action = 'add_task'; break;
+				case 'file': $action = 'add_file'; break;
+			}
+		}
+		return $action;
+	}
+
+
+	function getPluralObjectTypeName() {
+		return $this->getObjectTypeName(true);
+	}
+	
+	function getObjectTypeName($is_plural = false) {
+		$dim_ids = DimensionObjectTypes::getDimensionIdsByObjectTypeId($this->getId());
+		if ( is_array($dim_ids) && count($dim_ids) > 0 ) {
+		  	$type_name = trim(Members::getTypeNameToShowByObjectType($dim_ids[0], $this->getId(), null, $is_plural));
+		} else {
+		  	$type_name = lang($this->getName(). ($is_plural ? 's' : ''));
+		}
+		return $type_name;
+	}
+	
 } // ObjectType
 
 ?>

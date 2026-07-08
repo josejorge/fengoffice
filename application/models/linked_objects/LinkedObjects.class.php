@@ -15,7 +15,7 @@
     * @return array
     */
     static function getRelationsByObject(ApplicationDataObject $object) {
-      return self::findAll(array(
+      return self::instance()->findAll(array(
         'conditions' => array('(`rel_object_id` = ?) or (`object_id` = ?)', 
         		$object->getObjectId(), $object->getObjectId()),
         'order' => '`created_on`'
@@ -63,8 +63,15 @@
     * @return boolean
     */
     static function clearRelationsByObject(ApplicationDataObject $object) {
-      return self::delete(array('(`object_id` = ?) or (`rel_object_id` = ?)', 
-      $object->getId(), $object->getId()));
+    	// check permissions to unlink every linked object
+    	$linked_objs = self::getLinkedObjectsByObject($object);
+    	if (is_array($linked_objs)) {
+    	  foreach ($linked_objs as $lo) {
+    		if ($lo->canEdit(logged_user())) {
+    			self::instance()->delete(array('(`object_id` = ? AND `rel_object_id` = ?) or (`rel_object_id` = ? AND `object_id` = ?)', $object->getId(), $lo->getId(), $object->getId(), $lo->getId()));
+    		}
+    	  }
+    	}
     } // clearRelationsByObject
     
   } // clearRelationsByObject

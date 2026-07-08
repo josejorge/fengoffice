@@ -1,5 +1,7 @@
 <?php
-	if (!isset($genid)) $genid = gen_id(); 
+	if (!isset($genid)) $genid = gen_id();
+	
+	$null=null; Hook::fire('perm_group_edit_render_top_inputs', array('genid' => $genid, 'group' => $group), $null);
 ?>
 
 <div class="og-add-subscribers">
@@ -23,7 +25,7 @@
 
 	<?php if(is_array($users) && count($users)) { ?>
 		<div onclick="og.subscribeCompany(this)"  class="container-div company-name<?php echo $allChecked ? ' checked' : ''?>" onmouseout="og.rollOut(this,true)" onmouseover="og.rollOver(this)">
-		<?php $theCompany = Contacts::findById($companyId) ?>
+		<?php $theCompany = Contacts::instance()->findById($companyId) ?>
 			<div class="contact-picture-container" style="float:left;margin-left:10px;padding-top:3px;">
 				<img class="commentUserAvatar" src="<?php echo ($theCompany instanceof Contact ? $theCompany->getPictureUrl() : get_image_url('48x48/company.png')) ?>" alt="<?php echo clean($theCompany instanceof Contact ? $theCompany->getObjectName() : '') ?>" />
 			</div>
@@ -35,8 +37,12 @@
 		<div id="<?php echo $genid . $companyId ?>company_users">
 		<?php foreach($users as $user) { 
 				$checked = in_array($user->getId(), $groupUserIds);
+				
+				$add_class = "";
+				Hook::fire('perm_group_edit_user_box_add_class', $user, $add_class);
 				?>
-				<div id="div<?php echo $genid ?>inviteUser<?php echo $user->getId() ?>" class="container-div <?php echo $checked==true? 'checked-user':'user-name' ?>" onmouseout="og.rollOut(this,false <?php echo $checked==true? ',true':',false' ?>)" onmouseover="og.rollOver(this)" onclick="og.checkUser(this)">
+				<div id="div<?php echo $genid ?>inviteUser<?php echo $user->getId() ?>" class="container-div <?php echo $checked==true? 'checked-user':'user-name' ?> <?php echo $add_class?>" 
+					onmouseout="og.rollOut(this,false <?php echo $checked==true? ',true':',false' ?>)" onmouseover="og.rollOver(this)" onclick="og.checkUser(this)">
 					
 					<input id="<?php echo $genid ?>inviteUser<?php echo $user->getId()?>" type="hidden" name="<?php echo 'user['.$user->getId() .']' ?>" value="<?php echo $checked?'1':'0' ?>" />
 					<div class="contact-picture-container" style="float:left;padding-top:3px;">

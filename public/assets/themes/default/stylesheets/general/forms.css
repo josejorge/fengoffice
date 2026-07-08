@@ -160,6 +160,18 @@ button.add-first-btn.blue {
 	border-color: #5d92dc;
 	color: #fff;
 }
+button.add-new-user-btn {
+	background-position: left 5px center!important;
+	margin: 3px!important;
+}
+
+.coInputHeader .coInputButtons button.submit.disabled,
+.coInputHeader .coInputButtons button.submit.disabled:hover {
+	background-color: #ddd;
+    color: #999;
+    border: 1px solid #ccc;
+}
+
 .coInputHeader .coInputButtons button.submit:hover,
 .coInputMainBlock button.submit:hover, 
 .adminConfiguration .adminMainBlock button.submit:hover,
@@ -169,6 +181,76 @@ button.x-btn-text.blue:hover,
 button.submit.blue:hover, 
 button.add-first-btn.blue:hover {
 	background-color: #5d92dc;
+}
+
+.x-toolbar.x-small-editor button.add-first-btn {
+	height: 26px;
+	padding-right: 4px;
+    padding-left: 22px;
+	background-position-x: 2px;
+	min-width: 50px;
+}
+
+
+/*Buttons common*/
+.btn {
+	width: auto;
+	height: auto;
+    vertical-align: middle;
+    font-size: 18px;
+	float: left;
+	cursor: pointer;	
+	background: none repeat scroll 0 0 #f8f8f8;
+    border-color: #c4c4c4;
+    border-radius: 2px;
+    border-style: solid; 
+    border-width: 1px;
+    color: #333;
+    text-shadow: none;
+    box-shadow: 1px 1px 2px 0 rgba(0, 0, 0, 0.22);
+    -webkit-box-shadow: 1px 1px 2px 0px rgba(0, 0, 0, 0.22);
+    -moz-box-shadow:    1px 1px 2px 0px rgba(0, 0, 0, 0.22);
+    white-space: nowrap;
+}
+
+
+/*Buttons sizes*/
+.btn-lg{
+  padding: 10px 16px;
+  font-size: 18px;
+  line-height: 22px;
+  border-radius: 6px;
+}
+.btn-sm{
+  padding: 5px 10px;
+  padding-left: 4px;
+  font-size: 13px;
+  line-height: 1.26;
+  border-radius: 3px;
+}
+.btn-xs{
+  padding: 1px 5px;
+  font-size: 12px;
+  line-height: 1.5;
+  border-radius: 2px;
+}
+
+/*Buttons colors*/
+.btn-primary {
+  color: #ffffff;
+  background-color: #337ab7;
+  border-color: #2e6da4;
+}
+.btn-primary:focus,
+.btn-primary.focus {
+  color: #ffffff;
+  background-color: #286090;
+  border-color: #122b40;
+}
+.btn-primary:hover {
+  color: #ffffff;
+  background-color: #286090;
+  border-color: #204d74;
 }
 
 span.required {
@@ -320,6 +402,10 @@ a.button {
 	background-color: #d9d9d9;
 	cursor: pointer;
 }
+#quick-form.menu ul.quick-menu-list li.quick-menu-item a {
+	display: inline-block;
+	width: 100%;
+}
 
 
 #quick-form .close {
@@ -353,6 +439,11 @@ a.button {
 	clear: both ;
 }
 
+#quick-form input.x-form-text {
+	padding: 0 5px;
+	width: 75px!important;
+}
+
 #quick-form input[type=text], #quick-form input[type=email] {
 	width:95%;
 }
@@ -371,16 +462,6 @@ a.button {
 
 #quick-form a.more.coViewAction.ico-edit {
 	padding-top: 0px;
-}
-
-#menu-panel .x-tool.x-tool-options.x-tool-options-over {
-	border: 1px solid #999;
-	margin-top: -1px;
-}
-#menu-panel .x-tool.x-tool-options {
-	border: 1px solid #e7e7e7;
-	margin-top: -1px;
-	border-radius: 15px;
 }
 
 /** QUICK FORMS CONFIG**/
@@ -503,6 +584,14 @@ div.add-person-form div.field label.checkbox {
 
 .edit-form-tabs .ui-tabs-panel.ui-widget-content a {
 	color: #003562;
+	/*height: 14px;*/
+}
+.removeUndo > a{
+	height: 21px !important;
+}
+
+.edit-form-tabs .ui-tabs-panel.ui-widget-content .breadcrumb-container a {
+	color: inherit;
 }
 
 .edit-form-tabs .editor-container {
@@ -580,7 +669,7 @@ div.add-person-form div.field label.checkbox {
 	margin: 0px;
 }
 .simplemodal-data .coInputHeader .coInputHeaderUpperRow {
-	margin: 9px 10px 10px 0;
+	margin: 7px 10px 10px 0;
 	float: left;
 }
 .simplemodal-data .coInputHeader .coInputHeaderUpperRow .coInputTitle {
@@ -639,3 +728,42 @@ a.wiki-link {
 	text-decoration: underline;
 	font-weight: bold;
 }
+#modalQuickContact .coInputName input{
+    display: block;
+    width: 400px;
+    padding: 5px;
+    margin: 10px 0px;
+}
+
+a.cke_combo_button, a.cke_button {
+	height: auto !important;
+}
+
+.cp-multiple .cp-val { display: flex; align-items: center; margin-bottom: 5px;}
+.cp-multiple .cp-val:last-child { display: block; margin-top: 20px; }
+/* .cp-multiple .cp-val:last-child input, .cp-multiple .cp-val:last-child textarea { border: 2px solid #2A9D8F; } */
+.cp-multiple .cp-val a.ico-delete { margin-left: 10px !important; }
+.cp-multiple .cp-val a.ico-add { margin-top: 10px; display: inline-block; }
+/* .cp-multiple .cp-val:first-child { padding: 10px 0; } */
+/* .cp-multiple .cp-val:first-child a.ico-add { margin-left: 10px; } */
+.cp-multiple .cp-val input, .cp-multiple .cp-val textarea { max-width: calc(340px - 13px); box-sizing: border-box; width: 100%; }
+/* .cp-multiple .cp-val textarea { margin-left: 10px; } */
+
+.amount-container-fields {
+	overflow: auto;
+	max-width: 350px;
+	box-sizing: border-box;
+}
+
+.amount-container-fields select {
+	margin-bottom: 5px;
+	margin-right: 5px;
+	width: 60px;
+}
+.amount-container-fields input {
+	width: 155px;
+	box-sizing: border-box;
+	text-align: right;
+
+}
+

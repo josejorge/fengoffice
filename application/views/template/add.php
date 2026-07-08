@@ -9,7 +9,8 @@
 	$categories = array();
 	Hook::fire('object_edit_categories', $object, $categories);
 ?>
-<form id="templateForm" style='height:100%;background-color:white' class="internalForm" action="<?php echo $cotemplate->isNew() ? get_url('template', 'add') : $cotemplate->getEditUrl() ?>" method="post" enctype="multipart/form-data" onsubmit="return og.templateConfirmSubmit('<?php echo $genid ?>') && og.handleMemberChooserSubmit('<?php echo $genid; ?>', <?php echo $cotemplate->manager()->getObjectTypeId() ?>);">
+<form id="templateForm" style='height:100%;background-color:white' class="internalForm" action="<?php echo $cotemplate->isNew() ? get_url('template', 'add') : $cotemplate->getEditUrl() ?>" method="post" enctype="multipart/form-data" 
+onsubmit="return og.submitTemplateForm();">
 
 <div id = "templateConteiner" class="template">
 <div class="coInputHeader">
@@ -53,9 +54,13 @@
 		 <?php if (config_option('use_milestones')){ ?>	
 			<br/>
 		
-		 		<div class="db-ico ico-milestone" style="float: left;"></div>
+	 		<div class="db-ico ico-milestone" style="float: left;"></div>
+	 		
+	 		<?php $add_milestone_link_js = "og.render_modal_form('', {c:'milestone', a:'add', params: {template_milestone:1, template_id:". ($cotemplate->getId()? $cotemplate->getId():0) .", use_ajx:1}});"?>
+			<a id="<?php echo $genid ?>add_template_milestone" class='internalLink dashboard-link' href="#" onclick="<?php echo $add_milestone_link_js ?>">
+			<?php echo lang('add a new milestone to this template') ?></a>
 			
-			<a id="<?php echo $genid ?>add_template_milestone" class='internalLink dashboard-link' href="#" onmousedown="og.openLink(og.getUrl('milestone', 'add', {template_milestone:1, template_id:<?php echo $cotemplate->getId()? $cotemplate->getId():0 ?>}), {caller:'new_task_template'});" onclick="Ext.getCmp('tabs-panel').activate('new_task_template');">
+				<a style="display:none;" id="<?php echo $genid ?>add_template_milestone" class='internalLink dashboard-link' href="#" onmousedown="og.openLink(og.getUrl('milestone', 'add', {template_milestone:1, template_id:<?php echo $cotemplate->getId()? $cotemplate->getId():0 ?>}), {caller:'new_task_template'});" onclick="Ext.getCmp('tabs-panel').activate('new_task_template');">
 		 	<?php echo lang('add a new milestone to this template') ?></a>
 		 <?php }?>
 		
@@ -65,7 +70,7 @@
 	</div>
 	
 	<div id="<?php echo $genid ?>add_template_parameters_div">
-		<fieldset><legend><?php echo lang("variables")?></legend>
+		<fieldset><legend><?php echo lang("parameters")?></legend>
 			<a id="<?php echo $genid ?>params" href="#" onclick="og.promptAddParameter(this, 0)"><?php echo lang('add a variable to this template') ?></a>
 		</fieldset>
 	</div>
@@ -101,7 +106,7 @@
 		foreach ($parameters as $param) {
 			$param_def_val = str_replace(array('{{','}}'), '', $param->getDefaultValue());
 	?>
-		og.addParameterToTemplate(document.getElementById('<?php echo $genid ?>params'), '<?php echo str_replace("'","\'",$param->getName()) ?>','<?php echo $param->getType() ?>','<?php echo $param_def_val ?>'); 
+		og.addParameterToTemplate(document.getElementById('<?php echo $genid ?>params'), '<?php echo escape_character($param->getName()) ?>','<?php echo $param->getType() ?>','<?php echo $param_def_val ?>'); 
 	<?php }
 	}?>
 
@@ -132,6 +137,10 @@
 		if(data.action == "edit"){
 			//refresh name			
 			$('#template-object-name'+data.id).text(data.name);
+			$('#template-object-name'+data.id).parent().children(".ico-recurrent").remove();
+			if (parseInt(data.is_repetitive) > 0) {
+				$('#template-object-name'+data.id).parent().append('&nbsp;<span class="link-ico ico-recurrent"></span>');
+			}
 
 			//refresh milestone
 			if($('#subTasksDiv'+data.milestone_id).length && $('#subTasksDiv'+data.milestone_id).has($('#objectDiv'+data.id)).length == 0){
@@ -180,26 +189,71 @@
 	}
 
 	
+	og.template_obj_properties = {};
+	<?php // load template object properties
+		$template_task_props = TemplateTasks::instance()->getTemplateObjectProperties();
+		$template_mile_props = TemplateMilestones::instance()->getTemplateObjectProperties();
+		
+		foreach ($template_task_props as $prop) {
+			?>
+			var tt_ot = '<?php echo TemplateTasks::instance()->getObjectTypeId() ?>';
+			if (!og.template_obj_properties[tt_ot]) og.template_obj_properties[tt_ot] = {properties: []};
 
-	<?php if (is_array($objects)) {	
+ 			og.template_obj_properties[tt_ot].properties.push({
+				id: '<?php echo $prop['id'] ?>',
+				name: '<?php echo $prop['name'] ?>',
+				type: '<?php echo $prop['type'] ?>'
+ 			});
+			
+			<?php 
+		}
+				
+		foreach ($template_mile_props as $prop) {
+			?>
+			var tm_ot = '<?php echo TemplateMilestones::instance()->getObjectTypeId() ?>';
+			if (!og.template_obj_properties[tm_ot]) og.template_obj_properties[tm_ot] = {properties: []};
+
+			og.template_obj_properties[tm_ot].properties.push({
+				id: '<?php echo $prop['id'] ?>',
+				name: '<?php echo lang('field ProjectTasks '.$prop['id']) ?>',
+				type: '<?php echo $prop['type'] ?>'
+			});
+			<?php 
+		}
+	?>
+
+	og.template_allowed_users_to_assign = null;
+	<?php
+		$task_controller = new TaskController();
+		$_GET['for_template_var'] = 1;
+		$companies_to_assign = $task_controller->allowed_users_to_assign();
+		
+		if ($companies_to_assign && array_var($companies_to_assign, 'companies')) { ?>
+			og.template_allowed_users_to_assign = Ext.util.JSON.decode('<?php echo escape_character(json_encode($companies_to_assign['companies']))?>');
+	<?php 
+		} 
+		
+	if (is_array($objects)) {	
 		foreach ($objects as $o) {	?>			
 			og.redrawTemplateObjectsLists(<?php echo json_encode($o)?>);			
 			<?php 
-					if(isset($object_properties) && is_array($object_properties)){
-						$oid = $o["object_id"];
-						if(isset($object_properties[$oid])){
-							foreach($object_properties[$oid] as $objProp){  
-								$property = $objProp->getProperty();
-								
-								$value =  str_replace("\n","\\n",$objProp->getValue());
-								$value =  str_replace("'","\'",$value);								
-							?>
-							og.addTemplateObjectProperty(<?php echo $oid ?>, <?php echo $oid ?>, '<?php echo $property ?>', '<?php echo $value ?>');
-					  <?php }
-						}
-					}	
-					?>			
-	<?php } }?>
+			if(isset($object_properties) && is_array($object_properties)){
+				
+				$oid = $o["object_id"];
+				if(isset($object_properties[$oid])){
+					foreach($object_properties[$oid] as $objProp){
+						$property = $objProp->getProperty();
+						
+						$value =  str_replace("\n","\\n",$objProp->getValue());
+						$value =  escape_character($value);
+					?>
+					og.addTemplateObjectProperty(<?php echo $oid ?>, <?php echo $oid ?>, '<?php echo $property ?>', '<?php echo $value ?>', '<?php echo $o['object_type_id']?>');
+			  <?php }
+				}
+			}
+		}
+	}
+	?>
 			
 	var p = og.getParentContentPanel(Ext.get('<?php echo $genid ?>templateFormName'));
 	
@@ -223,7 +277,8 @@
 		if(type == "template_task"){
 			og.render_modal_form('', {c:'task', a:'edit_task', params: {id: id, template_task:1, template_id:<?php echo $cotemplate->getId() ? $cotemplate->getId():0 ?>}});
 		}else if(type == "template_milestone"){
-			og.openLink(og.getUrl('milestone', 'edit', {id: id, template_milestone:1}), {caller:'new_task_template'});
+			og.render_modal_form('', {c:'milestone', a:'edit', params: {id: id, template_milestone:1, template_id:<?php echo $cotemplate->getId() ? $cotemplate->getId():0 ?>, use_ajx:1}});
+			//og.openLink(og.getUrl('milestone', 'edit', {id: id, template_milestone:1}), {caller:'new_task_template'});
 		}
 	}
 
@@ -234,5 +289,41 @@
 			og.openLink(og.getUrl('milestone', 'edit', {id: id, template_milestone:1}), {caller:'new_task_template'});
 		}
 	}
-	
+
+	// removes all property inputs from the form and builds an unique input with all the values in a json string
+	og.submitTemplateForm = function() {
+		if ($("#<?php echo $genid; ?>templateFormName").val() == '') {
+			og.err(lang('template name required'));
+			return false;
+		}
+		
+		if (og.templateConfirmSubmit('<?php echo $genid ?>') && og.handleMemberChooserSubmit('<?php echo $genid; ?>', <?php echo $cotemplate->manager()->getObjectTypeId() ?>)) {
+
+			var all_prop_inputs = {};
+			
+			$('[name^="prop"]').each(function(){
+				all_prop_inputs[$(this).attr('name')] = $(this).val();
+			});
+			$('[name^="prop"]').remove();
+			
+			$('[name^="objectProperties"]').each(function(){
+				all_prop_inputs[$(this).attr('name')] = $(this).val();
+			});
+			$('[name^="objectProperties"]').remove();
+			
+			$('[name^="objects"]').each(function(){
+				all_prop_inputs[$(this).attr('name')] = $(this).val();
+			});
+			$('[name^="objects"]').remove();
+			
+			$('<input>').attr({
+			    type: 'hidden',
+			    id: 'all_prop_inputs',
+			    name: 'all_prop_inputs',
+			    value: encodeURIComponent(JSON.stringify(all_prop_inputs)),
+			}).appendTo('form');
+			
+			return true;
+		}
+	}
 </script>

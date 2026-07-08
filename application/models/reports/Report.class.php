@@ -27,7 +27,7 @@
 	 * @param array $errors
 	 * @return null
 	 */
-	function validate(&$errors) {
+	function validate($errors) {
 		if(trim($this->getObjectName()) == ''){
 			$errors[] = lang('report name required');
 		}
@@ -55,8 +55,8 @@
 	 * @param Project $project
 	 * @return booelean
 	 */
-	function canAdd(Contact $user, $context, &$notAllowedMember = '') {
-		return can_add($user, $context, $this->manager()->getObjectTypeId(), $notAllowedMember );
+	static function canAdd(Contact $user, $context, &$notAllowedMember = '') {
+		return can_add($user, $context, Reports::instance()->getObjectTypeId(), $notAllowedMember );
 	} // canAdd
 
 	/**
@@ -67,7 +67,9 @@
 	 * @return boolean
 	 */
 	function canEdit(Contact $user) {
-		return can_write($user, $this->getMembers(), $this->manager()->getObjectTypeId());
+        $can_edit = can_write($user, $this->getMembers(), $this->manager()->getObjectTypeId());
+        Hook::fire('report_can_edit', $this, $can_edit);
+        return $can_edit;
 	} // canEdit
 
 	/**
@@ -78,9 +80,37 @@
 	 * @return boolean
 	 */
 	function canDelete(Contact $user) {
-		return can_delete($user, $this->getMembers(), $this->manager()->getObjectTypeId());
+		
+		$can_delete = can_delete($user, $this->getMembers(), $this->manager()->getObjectTypeId());
+		Hook::fire('report_can_delete', $this, $can_delete);
+		
+		return $can_delete;
 	} // canDelete
     
+	
+	private $report_external_columns = null;
+	
+	function getReportExternalColumns() {
+		if (is_null($this->report_external_columns)) {
+			$ot = ObjectTypes::instance()->findById($this->getReportObjectTypeId());
+			
+			if ($ot instanceof ObjectType && $ot->getHandlerClass() != '') {
+				eval('$ot_manager = '.$ot->getHandlerClass().'::instance();');
+				
+				if ($ot_manager instanceof ContentDataObjects) {
+					$external_columns = $ot_manager->getExternalColumns();
+					
+					if ($ot_manager instanceof Timeslots) {
+						$external_columns = array_merge($external_columns, ProjectTasks::instance()->getExternalColumns());
+					}
+					
+					$this->report_external_columns = $external_columns;
+				}
+			}
+		}
+		
+		return $this->report_external_columns;
+	}
    
   } // Report
 

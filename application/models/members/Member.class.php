@@ -13,6 +13,17 @@ class Member extends BaseMember {
 	private $skip_validations = array();
 	
 	private $icon_class = null;
+
+	/**
+	 * Save the member
+	 *
+	 * @param void
+	 * @return boolean
+	 */
+	function save() {
+		$saved = parent::save();
+		return $saved;
+	}
 	
 	function getAllChildrenObjectTypeIds(){
 		return DimensionObjectTypeHierarchies::getAllChildrenObjectTypeIds($this->getDimensionId(), $this->getObjectTypeId());
@@ -43,7 +54,7 @@ class Member extends BaseMember {
 		$child_members = array();
 		$find_options = array('conditions' => '`parent_member_id` = ' . $this->getId() .' '. $extra_conditions);
 		if ($order != null) $find_options['order'] = $order;
-		$members = Members::findAll($find_options);
+		$members = Members::instance()->findAll($find_options);
 		foreach ($members as $mem){
 			$child_members[] = $mem;
 			if ($recursive) {
@@ -133,7 +144,7 @@ class Member extends BaseMember {
 	function getParentMember() {
 		if ($this->parent_member == null){
 			if ($this->getParentMemberId() != 0) {
-				 $this->parent_member = Members::findById($this->getParentMemberId());
+				 $this->parent_member = Members::getMemberById($this->getParentMemberId());
 			}
 		}
 		return $this->parent_member;
@@ -157,9 +168,13 @@ class Member extends BaseMember {
 		return DimensionMemberRestrictionDefinitions::getRestrictedObjectTypeIds($this->getDimensionId(), $this->getObjectTypeId(), $restricted_dimension_id, $is_required);
 	}
 	
+	function getTypeNameToShow() {
+	    return Members::getTypeNameToShowByObjectType($this->getDimensionId(), $this->getObjectTypeId());	    
+	}
+	
 	
 	function satisfiesRestriction($member_id){
-		$restriction_value = MemberRestrictions::findOne(array('conditions' => '`member_id` = ' . 
+		$restriction_value = MemberRestrictions::instance()->findOne(array('conditions' => '`member_id` = ' . 
 							 $member_id. ' AND `restricted_member_id` = '. $this->getId()));
 		if ($restriction_value != null) return true;
 		else return false;
@@ -183,15 +198,15 @@ class Member extends BaseMember {
 		}
 		
 		// delete member restrictions
-		MemberRestrictions::delete(array("`member_id` = ?", $this->getId()));
-		MemberRestrictions::delete(array("`restricted_member_id` = ?", $this->getId()));
+		MemberRestrictions::instance()->delete(array("`member_id` = ?", $this->getId()));
+		MemberRestrictions::instance()->delete(array("`restricted_member_id` = ?", $this->getId()));
 		
 		// delete member properties
-		MemberPropertyMembers::delete(array("`member_id` = ?", $this->getId()));
-		MemberPropertyMembers::delete(array("`property_member_id` = ?", $this->getId()));
+		MemberPropertyMembers::instance()->delete(array("`member_id` = ?", $this->getId()));
+		MemberPropertyMembers::instance()->delete(array("`property_member_id` = ?", $this->getId()));
 		
 		// delete permissions
-		ContactMemberPermissions::delete(array("member_id = ?", $this->getId()));
+		ContactMemberPermissions::instance()->delete(array("member_id = ?", $this->getId()));
 		
 		// delete member objects (if they don't belong to another member)
 		$sql = "SELECT `o`.`object_id` FROM `".ObjectMembers::instance()->getTableName()."` `o` WHERE `o`.`is_optimization`=0 AND `o`.`member_id`=".$this->getId()." AND NOT EXISTS (
@@ -200,13 +215,13 @@ class Member extends BaseMember {
     	$rows = $result->fetchAll();
     	if (!is_null($rows)) {
 	    	foreach ($rows as $row) {
-	    		$obj = Objects::findById(array_var($row, 'object_id'));
-	    		$obj->delete();
+	    		$obj = Objects::instance()->findById(array_var($row, 'object_id'));
+	    		if ($obj instanceof ContentDataObject) $obj->delete();
 	    	}
     	}
     	
     	// clean object_members
-    	ObjectMembers::delete("member_id = ".$this->getId());
+    	ObjectMembers::instance()->delete("member_id = ".$this->getId());
 		
 		// delete object if member is a dimension_object
 		if ($this->getObjectId()) {
@@ -243,13 +258,14 @@ class Member extends BaseMember {
 			foreach ($childs as $child) {
 				// check if child can be put in the parent (or root)
 				if ($this->getParentMemberId() == 0) {
-					$dim_ot = DimensionObjectTypes::findOne(array("conditions" => array("`dimension_id` = ? AND `object_type_id` = ?", $this->getDimensionId(), $child->getObjectTypeId())));
+					$dim_ot = DimensionObjectTypes::instance()->findOne(array("conditions" => array("`dimension_id` = ? AND `object_type_id` = ?", $this->getDimensionId(), $child->getObjectTypeId())));
 					if (!$dim_ot->getIsRoot()){
 						$error_message = lang("cannot delete member cannot be root");
 						return false;
 					}
 				} else {
-					if (!in_array($child->getObjectTypeId(), $child_ots)){
+					// if $child has same type than $this, then there is no need to check if $child can be son of $this->parent  
+					if ($child->getObjectTypeId() != $this->getObjectTypeId() && !in_array($child->getObjectTypeId(), $child_ots)){
 						$error_message = lang("cannot delete member childs cannot be moved to parent");
 						return false;
 					}
@@ -265,7 +281,12 @@ class Member extends BaseMember {
 			$child_ids[] = $this->getId();
 			$child_ids_str = implode(",", $child_ids);
 			
-			$objects_in_member = ObjectMembers::instance()->findAll(array('conditions' => 'member_id = '.$this->getId()));
+			$not_trashed_condition = " AND NOT EXISTS (
+					SELECT o.id FROM ".TABLE_PREFIX."objects o 
+					WHERE o.id=".TABLE_PREFIX."object_members.object_id AND o.trashed_by_id>0
+			) ";
+			
+			$objects_in_member = ObjectMembers::instance()->findAll(array('conditions' => 'member_id = '.$this->getId() . $not_trashed_condition));
 			if (!$objects_in_member || count($objects_in_member) == 0) {
 				return true;
 			} else {
@@ -293,7 +314,7 @@ class Member extends BaseMember {
 		return true;
 	}
 	
-	function validate(&$errors) {
+	function validate($errors) {
 		if (!array_var($this->skip_validations, 'presence of name')) {
 			if (!$this->validatePresenceOf('name')) $errors[] = lang('name required');
 		}
@@ -332,9 +353,11 @@ class Member extends BaseMember {
 	
 	function getObjectClass() {
 		if ($handler = $this->getObjectHandlerClass() ) {
-			eval ("\$itemClass = $handler::instance()->getItemClass();");
-			if ($itemClass) {
-				return $itemClass ;
+			if (class_exists($handler)) {
+				eval ("\$itemClass = $handler::instance()->getItemClass();");
+				if ($itemClass) {
+					return $itemClass ;
+				}
 			}
 		}
 		return '' ;
@@ -342,7 +365,7 @@ class Member extends BaseMember {
 	
 	function getObjectHandlerClass() {
 		if ($otid = $this->getObjectTypeId()){
-			if ($ot = ObjectTypes::findById($otid)) {
+			if ($ot = ObjectTypes::instance()->findById($otid)) {
 				if ($handler = $ot->getHandlerClass() ){
 					return $handler;
 				}
@@ -434,24 +457,35 @@ class Member extends BaseMember {
 			WHERE cmp.permission_group_id IN (".implode(",",$logged_user_pgs).") AND cmp.member_id=".TABLE_PREFIX."members.id)";
 		}
 		
-		$member = Members::findOne(array("conditions" => "`parent_member_id` = ". $this->getId() .' '. $permission_conditions));
+		$member = Members::instance()->findOne(array("conditions" => "`parent_member_id` = ". $this->getId() .' '. $permission_conditions));
 		if($member instanceof Member){
 			return true;
 		}
 		return false;
 	}
 	
-	function getPath(){
-		$path='';
-		foreach(array_reverse($this->getAllParentMembersInHierarchy(false)) as $parent){
-			$path.= $parent->getName(). "/";
-		}
-		if ($path){
-			$path=substr($path, 0, -1);
+	function getPath($separator="/", $prefix="", $suffix=""){
+		$path = '';
+		$parents = array_reverse($this->getAllParentMembersInHierarchy(false));
+		foreach($parents as $parent) {
+			$path .= ($path == "" ? "" : $separator) . $prefix . $parent->getName() . $suffix;
 		}
 		return $path;
 	}
 	
+	
+	function getPathToPrint($separator="/", $prefix="", $suffix=""){
+		$path = '';
+		$parents = array_reverse($this->getAllParentMembersInHierarchy(false));
+		if (count($parents) > 1) {
+			$path .= $prefix . "..." . $suffix;
+		} else {
+			foreach($parents as $parent) {
+				$path .= ($path == "" ? "" : $separator) . $prefix . $parent->getName() . $suffix;
+			}
+		}
+		return $path;
+	}
 	
 	
 	/**
@@ -498,6 +532,14 @@ class Member extends BaseMember {
 			foreach ($sub_members as $sub_member) {
 				if ($sub_member->getArchivedById() == 0) {
 					$count += $sub_member->archive($user);
+				}
+			}
+			
+			// if member has an associated object then archive it
+			if ($this->getObjectId() > 0) {
+				$rel_obj = Objects::findObject($this->getObjectId());
+				if ($rel_obj instanceof ContentDataObject && !$rel_obj->isArchived()) {
+					$rel_obj->archive();
 				}
 			}
 			
@@ -551,6 +593,14 @@ class Member extends BaseMember {
 			foreach ($sub_members as $sub_member) {
 				if ($sub_member->getArchivedById() > 0) {
 					$count += $sub_member->unarchive($user);
+				}
+			}
+			
+			// if member has an associated object then unarchive it
+			if ($this->getObjectId() > 0) {
+				$rel_obj = Objects::findObject($this->getObjectId());
+				if ($rel_obj instanceof ContentDataObject && $rel_obj->isArchived()) {
+					$rel_obj->unarchive();
 				}
 			}
 
@@ -642,4 +692,147 @@ class Member extends BaseMember {
 		
 		return $cant > 0;
 	}
+	
+
+	function getCustomPropertyValueByCode($cp_code) {
+		$value = '';
+
+		$object_type = ObjectTypes::instance()->findById($this->getObjectTypeId());
+
+		if ($object_type->getType() == 'dimension_group') {
+			if (Plugins::instance()->isActivePlugin('member_custom_properties')) {
+				$cp = MemberCustomProperties::getCustomPropertyByCode($object_type->getId(), $cp_code);
+				if ($cp) {
+					$cp_val = MemberCustomPropertyValues::getMemberCustomPropertyValue($this->getId(), $cp->getId());
+					if ($cp_val) $value = $cp_val->getValue();
+				}
+			}
+		} else {
+			$cp = CustomProperties::getCustomPropertyByCode($object_type->getId(), $cp_code);
+			if ($cp) {
+				$cp_val = CustomPropertyValues::getCustomPropertyValue($this->getObjectId(), $cp->getId());
+				if ($cp_val) $value = $cp_val->getValue();
+			}
+		}
+		return $value;
+	}
+	
+	
+	function getDataForHistory() {
+		$previous_data = array();
+		
+		$previous_data['original_member_data'] = DB::executeOne("SELECT * FROM ".TABLE_PREFIX."members WHERE id=".$this->getId());
+		
+		if (Plugins::instance()->isActivePlugin('member_custom_properties')) {
+			$previous_data['custom_properties'] = MemberCustomPropertyValues::instance()->getAllCustomPropertyValues($this->getId());
+		}
+		
+		$prev_assocs = MemberPropertyMembers::getAllAssociatedMemberIds($this->getId());
+		$prev_assocs_rev = MemberPropertyMembers::getAllAssociatedMemberIds($this->getId(), true);
+		foreach ($prev_assocs_rev as $a_id => $mem_ids) $prev_assocs[$a_id] = $mem_ids;
+		$previous_data['associations'] = $prev_assocs;
+		
+		return $previous_data;
+	}
+	
+	
+	
+	function getObjectData() {
+		$info = array();
+		
+		$definition = Members::instance()->getDefinition($this->getObjectTypeId(), $this->getDimensionId());
+		
+		$mem_columns = $this->manager()->getColumns();
+		
+		$mem_object = null;
+		if ($this->getObjectId() > 0) {
+			$mem_object = Objects::findObject($this->getObjectId());
+		}
+		
+		foreach ($definition as $property_id => $property_info) {
+			if (isset($info[$property_id])) continue;
+			
+			if (!str_starts_with($property_id, "cp_")) {
+				
+				if (str_starts_with($property_id, "dim_association_")) {
+					// dimension association
+					$association_id = $property_info['id'];
+					
+					if ($property_info['is_reverse']) {
+						$tmp_ids_csv = MemberPropertyMembers::getAllMemberIds($association_id, $this->getId());
+					} else {
+						$tmp_ids_csv = MemberPropertyMembers::getAllPropertyMemberIds($association_id, $this->getId());
+					}
+					$associated_members = array();
+					if (trim($tmp_ids_csv) != "") {
+						$associated_members = Members::instance()->findAll(array('conditions' => "id IN ($tmp_ids_csv)"));
+					}
+					$associated_info = array();
+					foreach ($associated_members as $amem) {
+						if ($amem instanceof Member) {
+							$associated_info[] = array('id' => $amem->getId(), 'name' => $amem->getName());
+						}
+					}
+					
+					$info[$property_id] = $associated_info;
+					
+				} else {
+					
+					// object property
+					if (in_array($property_id, $mem_columns)) {
+						$info[$property_id] = $this->getColumnValue($property_id);
+					} else {
+						if ($mem_object instanceof ContentDataObject) {
+							if (in_array($property_id, $mem_object->getColumns())) {
+								$info[$property_id] = $mem_object->getColumnValue($property_id);
+							} else {
+								if (!isset($associated_obj_columns)) {
+									$additional_fixed_columns = $mem_object->manager()->getAssociatedObjectsFixedColumns();
+								}
+
+								foreach ($additional_fixed_columns as $assoc_obj_col => $coldefinitions) {
+									foreach ($coldefinitions as $coldef) {
+										if ($coldef['col'] == $property_id) {
+											if (!isset($associated_object)) {
+												$associated_object = Objects::findObject($mem_object->getColumnValue($assoc_obj_col));
+											}
+											if ($associated_object instanceof ContentDataObject) {
+												$info[$property_id] = $associated_object->getColumnValue($property_id);
+												
+												if ($info[$property_id] instanceof DateTimeValue) {
+													if ($associated_object->getTimezoneId() > 0) {
+														$info[$property_id] = format_datetime($info[$property_id], DATE_MYSQL);
+													} else {
+														$info[$property_id] = date(DATE_MYSQL,$info[$property_id]->getTimestamp());
+													}
+												}
+											}
+											break;
+										}
+									}
+								}
+							}
+						}
+					}
+					
+					if (isset($info[$property_id]) && $info[$property_id] instanceof DateTimeValue) {
+						$apply_timezone = true;
+						if ($mem_object instanceof ContentDataObject && in_array($property_id, $mem_object->getColumns())) {
+							if ($mem_object->getTimezoneId() == 0) $apply_timezone = false;
+						}
+						
+						if ($apply_timezone) {
+							$info[$property_id] = format_datetime($info[$property_id], DATE_MYSQL);
+						} else {
+							$info[$property_id] = date(DATE_MYSQL,$info[$property_id]->getTimestamp());
+						}
+					}
+				}
+			}
+		}
+		Hook::fire('additional_member_column_values', array('definition' => $definition, 'member' => $this), $info);
+		return $info;
+	}
+	
+	
 }

@@ -20,7 +20,7 @@
   				$stop = false;
   				foreach ($parents as $parent){
   					if (!$stop){
-	  					$exists = self::findOne(array("conditions" => array("`object_id` = ? AND `member_id` = ? ", $object_id, $parent->getId())))!= null;
+	  					$exists = self::instance()->findOne(array("conditions" => array("`object_id` = ? AND `member_id` = ? ", $object_id, $parent->getId())))!= null;
 	  					if (!$exists){
 	  						$values = "(".$object_id.",".$parent->getId().",1)";
   							DB::execute("INSERT INTO ".TABLE_PREFIX."object_members (object_id,member_id,is_optimization) VALUES $values ON DUPLICATE KEY UPDATE object_id=object_id");
@@ -39,58 +39,85 @@
   		static function removeObjectFromMembers(ContentDataObject $object, Contact $contact, $context_members, $members_to_remove = null, $check_permissions = true){
   			
   			if (is_null($members_to_remove)) {
-  				$member_ids = array_flat(DB::executeAll("SELECT member_id FROM ".TABLE_PREFIX."object_members WHERE object_id = " . $object->getId()));
+  				$member_ids = array_flat(DB::executeAll("SELECT om.member_id FROM ".TABLE_PREFIX."object_members om
+  						INNER JOIN ".TABLE_PREFIX."members m ON m.id=om.member_id
+  						INNER JOIN ".TABLE_PREFIX."dimensions d On d.id=m.dimension_id 
+  						WHERE d.is_manageable=1 AND om.object_id = " . $object->getId()));
   			} else {
   				$member_ids = $members_to_remove;
   			}
   			
-  			$memebers_deleted_ids = array();
-  			foreach($member_ids as $id){
-				
-				$member = Members::findById($id);
-				if (!$member instanceof Member) continue;
-				
-				if($check_permissions){
-					//can write this object type in the member
-					$can_write = $object->canAddToMember($contact, $member, $context_members);
-				}else{
-					$can_write = true;
-				}
-				
-				if ($can_write){
-					$om = self::findById(array('object_id' => $object->getId(), 'member_id' => $id));
-					if ($om instanceof ObjectMember) {
-						$om->delete();
-						$memebers_deleted_ids[] = $id;
+  			if (!$check_permissions || $contact->isAdministrator()) {
+  				$member_ids = array_filter($member_ids);
+  				if (count($member_ids) > 0) {
+  					DB::execute("DELETE FROM ".TABLE_PREFIX."object_members WHERE member_id IN (".implode(',', $member_ids).") AND object_id=".$object->getId());
+  				
+  					$all_parent_member_ids = Members::getAllParentsInHierarchy($member_ids, true);
+	  				
+	  				if (count($all_parent_member_ids) > 0) {
+	  					DB::execute("DELETE FROM ".TABLE_PREFIX."object_members WHERE is_optimization=1 AND member_id IN (".implode(',', $all_parent_member_ids).") AND object_id=".$object->getId());
+	  				}
+  				}
+  				$memebers_deleted_ids = $member_ids;
+  				
+  			} else {
+  				
+	  			
+	  			$memebers_deleted_ids = array();
+	  			foreach($member_ids as $id){
+					
+					$member = Members::getMemberById($id);
+					if (!$member instanceof Member) continue;
+					
+					if($check_permissions){
+						//can write this object type in the member
+						$can_write = $object->canAddToMember($contact, $member, $context_members);
+					}else{
+						$can_write = true;
 					}
 					
-					$stop = false;
-					while ($member->getParentMember() != null && !$stop){
-						$member = $member->getParentMember();
-						$obj_member = ObjectMembers::findOne(array("conditions" => array("`object_id` = ? AND `member_id` = ? AND 
-									`is_optimization` = 1", $object->getId(),$member->getId())));
-						if (!is_null($obj_member)) {
-							$obj_member->delete();
+					if ($can_write){
+						$om = self::instance()->findById(array('object_id' => $object->getId(), 'member_id' => $id));
+						if ($om instanceof ObjectMember) {
+							$om->delete();
+							$memebers_deleted_ids[] = $id;
 						}
-						else $stop = true;
+						
+						$stop = false;
+						while ($member->getParentMember() != null && !$stop){
+							$member = $member->getParentMember();
+							$obj_member = ObjectMembers::instance()->findOne(array("conditions" => array("`object_id` = ? AND `member_id` = ? AND 
+										`is_optimization` = 1", $object->getId(),$member->getId())));
+							if (!is_null($obj_member)) {
+								$obj_member->delete();
+							}
+							else $stop = true;
+						}
 					}
 				}
-			}
-			
+  			}
+  			
 			return $memebers_deleted_ids;
   		}
   		
   		
-  		static function getMemberIdsByObject($object_id){
+  		static function getMemberIdsByObject($object_id, $exclude_ot_ids = array()){
   			if ($object_id) {
-	  			$db_res = DB::execute("SELECT member_id FROM ".TABLE_PREFIX."object_members WHERE object_id = $object_id AND is_optimization = 0");
+				
+				$ot_cond = "";
+				$member_join = "";
+				if (count($exclude_ot_ids) > 0) {	
+					$member_join = "INNER JOIN ".TABLE_PREFIX."members m ON m.id=om.member_id";
+					$ot_cond = "AND m.object_type_id NOT IN (".implode(",", $exclude_ot_ids).")";
+				}
+	  			$db_res = DB::execute("SELECT member_id FROM ".TABLE_PREFIX."object_members om $member_join WHERE om.object_id = $object_id AND is_optimization = 0 $ot_cond");
 	  			$rows = $db_res->fetchAll();
   			} else {
   				return array();
   			}
   				
   			$member_ids = array();
-  			if(count($rows) > 0){
+  			if(is_array($rows) && count($rows) > 0){
   				foreach ($rows as $row){
   					$member_ids[] = $row['member_id'];
   				}
@@ -128,15 +155,16 @@
   		
     	static function getMembersByObject($object_id){
   			$ids = self::getMemberIdsByObject($object_id);
-  			$members = Members::findAll(array("conditions" => "`id` IN (".implode(",", $ids).")"));
+  			$members = Members::instance()->findAll(array("conditions" => "`id` IN (".implode(",", $ids).")"));
   			
   			return $members;				  
   		}
   		
   		
-  		static function getMembersByObjectAndDimension($object_id, $dimension_id, $extra_conditions = "") {
+  		static function getMembersByObjectAndDimension($object_id, $dimension_id, $extra_conditions = "", $only_ids = false) {
+  			$sel_cols = $only_ids ? "m.id" : "m.*";
   			$sql = "
-  				SELECT m.* 
+  				SELECT $sel_cols 
   				FROM ".TABLE_PREFIX."object_members om 
   				INNER JOIN ".TABLE_PREFIX."members m ON om.member_id = m.id 
   				WHERE 
@@ -148,6 +176,10 @@
   			$result = array();
   			$rows = DB::executeAll($sql);
   			if (!is_array($rows)) return $result;
+  			
+  			if ($only_ids) {
+  				return array_filter(array_flat($rows));
+  			}
   			
   			foreach ($rows as $row) {
   				$member = new Member();
@@ -173,7 +205,7 @@
   				}
   				
   				$sql = "
-  					SELECT om.member_id
+  					SELECT om.member_id, m.object_type_id, om.is_optimization
   					FROM ".TABLE_PREFIX."object_members om
   					INNER JOIN ".TABLE_PREFIX."members m ON om.member_id = m.id
   					$cache_sql
@@ -183,21 +215,35 @@
   					ORDER BY om.member_id
   					$SQL_LIMIT
   				";
-  				$db_res = DB::execute($sql);
-  				$rows = $db_res->fetchAll();
+  				return DB::executeAll($sql);
   			} else {
   				return array();
   			}
-  		
-  			$member_ids = array();
-  			if(count($rows) > 0){
-  				foreach ($rows as $row){
-  					$member_ids[] = $row['member_id'];
-  				}
-  			}
-  				
-  			return $member_ids;
   		}
+
+      /**
+       * Check if an object is in root
+       *
+       * @param integer   $object_id  Object id
+       * @return boolean
+       */
+      static function is_object_in_root($object_id){
+          $enabled_dimensions_sql = "";
+          $enabled_dimensions_ids = implode(',', array_filter(config_option('enabled_dimensions')));
+          if ($enabled_dimensions_ids != "") {
+              $enabled_dimensions_sql = "AND m.dimension_id IN ($enabled_dimensions_ids)";
+          }
+          $sql = "SELECT count(om.member_id) as total_mem FROM ".TABLE_PREFIX."object_members om
+			INNER JOIN ".TABLE_PREFIX."members m ON m.id=om.member_id
+			INNER JOIN ".TABLE_PREFIX."dimensions d ON d.id=m.dimension_id
+			WHERE om.object_id='$object_id' AND om.is_optimization=0
+			AND d.defines_permissions=1 $enabled_dimensions_sql";
+          $r = DB::executeOne($sql);
+
+          $is_classified = $r['total_mem'] > 0;
+
+          return !$is_classified;
+      }
      
   		
   } // ObjectMembers 

@@ -15,7 +15,7 @@
 			$fname = substr($fname, 0, $dot_pos);
 		}
 	}
-	$fname_s = str_replace("'","\'",$fname);
+	$fname_s = escape_character($fname);
 ?>
 
 <form class="internalForm" style="height:100%; overflow:hidden;" id="<?php echo $genid ?>form" action="<?php echo get_url('files', 'save_document') ?>" method="post" enctype="multipart/form-data" onsubmit="return og.addDocumentSubmit('<?php echo $genid ?>');">
@@ -28,9 +28,12 @@
 		$ckEditorContent = '';
 		$filename ='';
 	} else {
-		$content = $file->getFileContentWithRealUrls() ;		
-		require_once LIBRARY_PATH . "/htmlpurifier/HTMLPurifier.standalone.php";
-		$ckEditorContent = HTMLPurifier::instance()->purify($content);
+		if (defined('SANDBOX_URL')) {
+			$ckEditorContent = $file->getFileContentWithRealUrls();
+		} else {
+			$ckEditorContent = purify_html($file->getFileContentWithRealUrls());
+		}
+		
 		$filename = $file->getName();
 	}
 
@@ -71,7 +74,7 @@ var h = document.getElementById("<?php echo $genid ?>ckcontainer").offsetHeight;
 var editor = CKEDITOR.replace('<?php echo $genid ?>ckeditor', {
 	height: (h-100) + 'px',
 	allowedContent: true,
-	enterMode: CKEDITOR.ENTER_DIV,
+	enterMode: CKEDITOR.ENTER_BR,
 	shiftEnterMode: CKEDITOR.ENTER_BR,
 	disableNativeSpellChecker: false,
 	language: '<?php echo $loc ?>',
@@ -79,14 +82,14 @@ var editor = CKEDITOR.replace('<?php echo $genid ?>ckeditor', {
 	contentsCss: ['<?php echo get_javascript_url('ckeditor/contents.css').'?rev='.product_version_revision();?>', '<?php echo get_stylesheet_url('og/ckeditor_override.css').'?rev='.product_version_revision();?>'],
 	toolbar: [
 				['Source','-','PasteText','PasteFromWord','-','Print', 'SpellChecker', 'Scayt','-',
-				'Undo','Redo','-','Find','Replace','-','SelectAll', '-',
+				'Undo','Redo','-','Find','Replace','-','SelectAll',
 				'Format','Font','FontSize'],
 				'/',
 				['Bold','Italic','Underline','Strike','-','Subscript','Superscript','-',
 				'NumberedList','BulletedList','-','Outdent','Indent','Blockquote','-',
 				'JustifyLeft','JustifyCenter','JustifyRight','JustifyBlock','-',
 				'Link','Unlink', 'Anchor', '-','Maximize','-',
-				'Image','Table','HorizontalRule','Smiley','SpecialChar','PageBreak','-', 
+				'Image','Youtube','Table','HorizontalRule','Smiley','SpecialChar','PageBreak','-', 
 				'TextColor','BGColor','RemoveFormat']
 			],
 	
@@ -121,7 +124,12 @@ var editor = CKEDITOR.replace('<?php echo $genid ?>ckeditor', {
 			Ext.getCmp(p.id).setPreventClose(editor.checkDirty());
 		}
 	},
-	entities_additional : '#39,#336,#337,#368,#369'
+	fillEmptyBlocks: false,
+
+	extraPlugins: 'youtube',
+	
+	removePlugins: 'scayt,liststyle,magicline',
+	entities_additional : '#336,#337,#368,#369'
 });
 
 

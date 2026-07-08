@@ -22,7 +22,9 @@
     	'associated_object_type_id' => DATA_TYPE_INTEGER, 
     	'is_required' => DATA_TYPE_BOOLEAN, 
     	'is_multiple' => DATA_TYPE_BOOLEAN, 
-    	'keeps_record' => DATA_TYPE_BOOLEAN
+    	'keeps_record' => DATA_TYPE_BOOLEAN,
+    	'allows_default_selection' => DATA_TYPE_BOOLEAN,
+    	'code' => DATA_TYPE_STRING,
     );
   
     /**
@@ -203,7 +205,7 @@
     * @param integer $current_page Current page number
     * @return array
     */
-    function paginate($arguments = null, $items_per_page = 10, $current_page = 1) {
+    function paginate($arguments = null, $items_per_page = 10, $current_page = 1, $count = null) {
       if(isset($this) && instance_of($this, 'DimensionMemberAssociations')) {
         return parent::paginate($arguments, $items_per_page, $current_page);
       } else {
@@ -216,7 +218,7 @@
     *
     * @return DimensionMemberAssociations 
     */
-    function instance() {
+    static function instance() {
       static $instance;
       if(!instance_of($instance, 'DimensionMemberAssociations')) {
         $instance = new DimensionMemberAssociations();

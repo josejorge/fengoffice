@@ -1,9 +1,8 @@
 og.ObjectPicker = function(config, object_id, object_id_no_select, ignore_context) {
 	if (!config) config = {};
-	
+
 	if (!config.extra_list_params) config.extra_list_params = {};
 	extra_list_param = Ext.util.JSON.encode(config.extra_list_params);
-		
 	var url_params = {
 		ajax: true,
 		include_comments: true,
@@ -11,26 +10,44 @@ og.ObjectPicker = function(config, object_id, object_id_no_select, ignore_contex
 		count_results : 0,
 		extra_list_params: extra_list_param
 	};
-	if (ignore_context) {
-		url_params['ignore_context'] = ignore_context;
+
+	var url_controller = 'object';
+	var url_action = 'list_objects';
+	if (config.url_controller) url_controller = config.url_controller;
+	if (config.url_action) url_action = config.url_action;
+
+	var available_fields = [
+		'name', 'object_id', 'type', 'ot_id', 'icon', 'object_id', 'mimeType',
+		'createdBy', 'createdById', 'dateCreated', 'assignedTo',
+		'updatedBy', 'updatedById', 'dateUpdated', 'startDate', 'dueDate',
+		'memPath', // this field contains all the classification information
+	];
+
+	// let plugins add more fields to use in this component
+	if (og.object_picker_additional_fields) {
+		available_fields = available_fields.concat(og.object_picker_additional_fields);
 	}
+
+	// add dimension keys to available fields
+	var dim_names = [];	
+	for (did in og.dimensions_info) {
+		if (isNaN(did)) continue;
+		dim_names.push('dim_' + did);
+	}
+	available_fields = available_fields.concat(dim_names);
 	
 	var Grid = function(config) {
 		if (!config) config = {};
 		this.store = new Ext.data.Store({
         	proxy: new Ext.data.HttpProxy(new Ext.data.Connection({
 				method: 'GET',
-            	url: og.getUrl('object', 'list_objects', url_params)
+            	url: og.getUrl(url_controller, url_action, url_params)
         	})),
         	reader: new Ext.data.JsonReader({
             	root: 'objects',
             	totalProperty: 'totalCount',
             	id: 'id',
-            	fields: [
-	                'name', 'object_id', 'type', 'ot_id', 'icon', 'object_id', 'mimeType',
-	                'createdBy', 'createdById', 'dateCreated',
-					'updatedBy', 'updatedById', 'dateUpdated'
-            	]
+            	fields: available_fields
         	}),
         	remoteSort: true,
         	listeners: {
@@ -44,11 +61,18 @@ og.ObjectPicker = function(config, object_id, object_id_no_select, ignore_contex
         			/*this.lastOptions.params = this.baseParams;
         			this.lastOptions.params.count_results = 1;
         			Ext.getCmp('obj_picker_grid').reloadGridPagingToolbar('object','list_objects','obj_picker_grid');*/
+
+					// draw classification breadcrumbs
+					og.eventManager.fireEvent('replace all empty breadcrumb', null);
         		}
         	}
     	});
 		
-
+		this.store.baseParams.ignore_context = ignore_context ? '1' : '0';
+		
+		if (config.extra_member_ids) {
+			this.store.baseParams.extra_member_ids = config.extra_member_ids;
+		}
 			
     	this.store.setDefaultSort('dateUpdated', 'desc');
 
@@ -74,61 +98,107 @@ og.ObjectPicker = function(config, object_id, object_id_no_select, ignore_contex
 		}
 
 		var sm = new Ext.grid.RowSelectionModel();
-		var cm = new Ext.grid.ColumnModel([{
-	        	id: 'icon',
-	        	header: '&nbsp;',
-	        	dataIndex: 'icon',
-	        	width: 28,
-	        	renderer: renderIcon,
-	        	sortable: false,
-	        	fixed:true,
-	        	resizable: false,
-	        	hideable:false,
-	        	menuDisabled: true
-	        },{
+
+		//set array to render columns
+		var arrayColumns = [{
+				id: 'icon',
+				header: '&nbsp;',
+				dataIndex: 'icon',
+				width: 28,
+				renderer: renderIcon,
+				sortable: false,
+				fixed:true,
+				resizable: false,
+				hideable:false,
+				menuDisabled: true
+			},{
 				id: 'name',
 				header: lang("name"),
 				dataIndex: 'name',
-				renderer: og.clean
-				//,width: 120
-	        },{
+				renderer: og.clean,
+				width: 350
+			},{
 				id: 'type',
 				header: lang('type'),
 				dataIndex: 'type',
 				width: 60,
 				hidden: true,
 				sortable: false
-	        },{
+			},{
 				id: 'last',
 				header: lang("last update"),
 				dataIndex: 'dateUpdated',
-				width: 60,
+				width: 90,
 				renderer: renderDate
-	        },{
-	        	id: 'user',
-	        	header: lang('user'),
-	        	dataIndex: 'updatedBy',
-	        	width: 60,
-	        	renderer: og.clean,
-	        	sortable: false,
+			},{
+				id: 'user',
+				header: lang('updated by'),
+				dataIndex: 'updatedBy',
+				width: 90,
+				renderer: og.clean,
+				sortable: false,
 				hidden: true
-	        },{
+			},{
 				id: 'created',
 				header: lang("created on"),
 				dataIndex: 'dateCreated',
-				width: 60,
+				width: 90,
 				renderer: renderDate,
 				hidden: true
 			},{
+				id: 'assignedto',
+				header: lang('assigned to'),
+				dataIndex: 'assignedTo',
+				width: 120,
+				renderer: 'string',
+				hidden: true
+			},{
 				id: 'author',
-				header: lang("author"),
+				header: lang("created by"),
 				dataIndex: 'createdBy',
-				width: 60,
+				width: 90,
 				renderer: og.clean,
 				hidden: true
-			}]);
+			},{
+				id: 'start',
+				header: lang("start date"),
+				dataIndex: 'startDate',
+				width: 90,
+				renderer: renderDate,
+				sortable: false,
+				hidden: false
+			},{
+				id: 'due',
+				header: lang("due date"),
+				dataIndex: 'dueDate',
+				width: 90,
+				renderer: renderDate,
+				sortable: false,
+				hidden: false
+			}
+		];
+
+		// dimension columns for column model
+		// use og.dimensionPanels to put the same order as in the left panel dimension trees
+		for (let i=0; i < og.dimensionPanels.length; i++) {
+			let dim_panel = og.dimensionPanels[i];
+			if (!dim_panel) continue;
+
+			let did = dim_panel.dimensionId;
+			arrayColumns.push({
+				id: 'dim_' + did,
+				header: dim_panel.title,
+				dataIndex: 'dim_' + did,
+				sortable: false,
+				renderer: og.renderDimCol
+			});
+			og.breadcrumbs_skipped_dimensions[did] = did;
+		}
+		// --
+
+		var cm = new Ext.grid.ColumnModel(arrayColumns);
 	    cm.defaultSortable = true;
-    
+
 		Grid.superclass.constructor.call(this, Ext.apply(config, {
 	        store: this.store,
 			layout: 'fit',
@@ -144,19 +214,61 @@ og.ObjectPicker = function(config, object_id, object_id_no_select, ignore_contex
 	            emptyMsg: lang("no objects to display")
 	        }),
 			viewConfig: {
-	            forceFit:true
+	            forceFit: false // allow horizontal scroll
 	        },
-			sm: sm
+			sm: sm,
+			listeners: {
+				'columnmove': {
+					fn: function(old_index, new_index) {
+						og.eventManager.fireEvent('replace all empty breadcrumb', null);
+					},
+					scope: this
+				}
+			}
 	    }));
 	}
+
 	Ext.extend(Grid, Ext.grid.GridPanel, {
 		member_filter: {},
-		
+
 		getSelected: function() {
 			return this.getSelectionModel().getSelections();
 		},
-		
+		//filter by name
 		filterSelect: function(filter) {
+
+			// get column index for the columns we are going to modify
+			var dueDateIndex = this.getColumnModel().findColumnIndex('dueDate');
+			var startDateIndex = this.getColumnModel().findColumnIndex('startDate');
+			var nameIndex = this.getColumnModel().findColumnIndex('name');
+			var lastUpdateIndex = this.getColumnModel().findColumnIndex('dateUpdated');
+			var assignedToIndex = this.getColumnModel().findColumnIndex('assignedTo');
+
+			/**
+			 * If the User clicks on Task dimension (in Link Objects modal), the startDate and dueDate
+			 * columns will be visible.
+			 * Sets width of columns to see better.
+			 */
+			//set the columns to visible or not
+			if(filter && filter.type) {
+				let filtersMenu = filter.type.split(',');
+				if(filtersMenu.indexOf("task") > -1) {
+					this.getColumnModel().setHidden(startDateIndex, false);
+					this.getColumnModel().setHidden(dueDateIndex, false);
+					this.getColumnModel().setHidden(assignedToIndex, false);
+				}
+				else {
+					this.getColumnModel().setHidden(startDateIndex, true);
+					this.getColumnModel().setHidden(dueDateIndex, true);
+					this.getColumnModel().setHidden(assignedToIndex, true);
+				}
+				this.getColumnModel().setColumnWidth(nameIndex, 400);//name
+				this.getColumnModel().setColumnWidth(lastUpdateIndex, 130);//last update
+				this.getColumnModel().setColumnWidth(startDateIndex, 130);//start date
+				this.getColumnModel().setColumnWidth(dueDateIndex, 130);//due date
+				this.getColumnModel().setColumnWidth(assignedToIndex, 130);//assignedTo date
+			}
+
 			if (filter && filter.filter == 'type') {
 				this.type = filter.type;
 				this.store.baseParams.type = this.type;
@@ -175,8 +287,11 @@ og.ObjectPicker = function(config, object_id, object_id_no_select, ignore_contex
 					member_ids.push(this.member_filter[x][mi]);
 				}
 			}
+			
+			// always igonre context, use the filters that the user has chosen 
+			this.store.baseParams.ignore_context = 1;
+			
 			this.store.baseParams.extra_member_ids = Ext.util.JSON.encode(member_ids);
-			this.store.baseParams.ignore_context = this.store.baseParams.ignore_context || member_ids.length > 0;
 			
 			this.load();
 		},
@@ -321,7 +436,7 @@ og.ObjectPicker = function(config, object_id, object_id_no_select, ignore_contex
 			            tooltip: lang('refresh desc'),
 			            iconCls: 'op-ico-refresh',
 						handler: function() {
-							//this.loadFilters();
+							this.grid.filterSelect();
 							this.grid.store.reload();
 						},
 						scope: this
@@ -360,10 +475,22 @@ og.ObjectPicker = function(config, object_id, object_id_no_select, ignore_contex
 			tbarItems.push(config.more_tbar_items[i]);
 		}
 	}
-	
+
+	//get the objects id from og.get_object_type_by_name
+	let object_type = {
+		id: 0, //set object type id=0 to load default filtes
+	};
+
+	//if config.selected_type is not undefined, null or empty get the object type
+	if(config.selected_type!=undefined && config.selected_type!='' && config.selected_type!=null) 
+	{
+		object_type=og.get_object_type_by_name(config.selected_type);
+	}
+
+	//construct object picker
 	og.ObjectPicker.superclass.constructor.call(this, Ext.apply(config, {
 		y: 50,
-		width: 640,
+		width: 800,
 		height: 480,
 		id: 'object-picker',
 		layout: 'border',
@@ -386,7 +513,7 @@ og.ObjectPicker = function(config, object_id, object_id_no_select, ignore_contex
 				layout: 'fit',
 				tbar: tbarItems,
 				items: [
-					this.grid = new Grid()
+					this.grid = new Grid(config)
 				]
 			},
 			{
@@ -416,7 +543,12 @@ og.ObjectPicker = function(config, object_id, object_id_no_select, ignore_contex
 						split: true,
 						autoLoad: {
 							scripts: true,
-							url: og.getUrl('dimension', 'linked_object_filters', {context: og.contextManager.plainContext()})
+							url: og.getUrl('dimension', 'linked_object_filters', 
+											{context: og.contextManager.plainContext(),
+											 object_type_id:object_type.id,
+											 skip_default_member_selections: true,
+											 add_on_remove_function: true
+											})
 						},
 						listeners: {
 							memberselected: {
@@ -477,14 +609,36 @@ Ext.extend(og.ObjectPicker, Ext.Window, {
 
 og.ObjectPicker.show = function(callback, scope, config, object_id, object_id_no_select) {
 	if (!config) config = {};
-	if (!config.ignore_context) config.ignore_context = false;
     
 	this.dialog = new og.ObjectPicker(config, object_id, object_id_no_select, config.ignore_context);
 	
 	this.dialog.loadFilters(config);
 	if (config.context) {
 		this.dialog.grid.store.baseParams.context = config.context;
+		var con = eval(config.context);
+	} else {
+		var con = og.contextManager.dimensionMembers;
 	}
+	
+	var has_extra_member_ids = typeof(config.extra_member_ids) != 'undefined';
+	if (!has_extra_member_ids) config.extra_member_ids = [];
+	
+	config.ignore_context = 1;
+	this.dialog.grid.member_filter = {};
+	
+	// initialize the member filters with the current context
+	for (x in con) {
+		this.dialog.grid.member_filter[x] = [];
+		for (i=0; i<con[x].length; i++) {
+			if (parseInt(con[x][i]) > 0) {
+				this.dialog.grid.member_filter[x].push(con[x][i]);
+				if (!has_extra_member_ids) {
+					config.extra_member_ids.push(con[x][i]);
+				}
+			}
+		}
+	}
+	
 	this.dialog.load();
 	this.dialog.purgeListeners();
 	this.dialog.on('objectselected', callback, scope, {single:true});

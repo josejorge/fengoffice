@@ -49,7 +49,7 @@ if (can_manage_billing(logged_user())) {
 	$icons[] = array(
 		'ico' => 'ico-large-billing',
 		'url' => get_url('billing', 'index'),
-		'name' => lang('billing'),
+		'name' => lang('billing and invoicing'),
 		'extra' => '<a class="internalLink coViewAction ico-add" href="' . get_url('billing', 'add') . '">' . lang('add billing category') . '</a>',
 	);	
 }
@@ -167,7 +167,7 @@ foreach ($icons as $icon) {
 	$count++;?>
 <td align="center">
     <div style="width:150px;display:block; margin-right:10px;margin-bottom:40px">
-    <table width="100%" align="center"><tr><td align="center">
+    <table width="100%" text-align="center"><tr><td text-align="center">
     	<a class="internalLink" href="<?php echo $icon['url'] ?>" <?php echo isset($icon['target']) ? 'target="'.$icon['target'].'"' : '' ?> <?php echo isset($icon['onclick']) ? 'onclick="'.$icon['onclick'].'"' : '' ?>>
     		<span style="display: block;" class="coViewIconImage <?php echo $icon['ico']?>"></span>
     	</a>

@@ -119,6 +119,8 @@
     'success edit task' => 'Selected task has been updated',
     'success delete task' => 'Selected task has been deleted',
     'success complete task' => 'Selected task has been completed',
+    'success mark as started task' => 'Selected task has been mark as started',
+    'success unmark as started task' => 'Selected task has been unmark as started',
     'success open task' => 'Selected task has been reopened',
     'success n tasks updated' => '{0} tasks updated',
 	'success add mail' => 'Email sent successfully',
@@ -215,6 +217,7 @@
     'success delete contacts' => 'The selected people have been deleted successfully',
   
     'success classify email' => 'Email classified successfully',
+  	'success classify email in' => 'Email classified successfully in \'{0}\'',
     'success delete email' => 'Email has been deleted',
   	'success unclassify email' => 'Email unclassified successfully',
   	'error unclassify email' => 'Failed to unclassify email',
@@ -252,15 +255,15 @@
 	'success delete billing category' => 'Billing category deleted successfully',
 	'success edit billing category' => 'Billing category updated successfully',
   	'success assign user billing categories' => 'Billing categories were successfully assigned to users',
-  	'success update billing values' => 'Timeslot billing values updated succesfully: {0} entries modified.',
+  	'success update billing values' => 'Time entry billing values updated succesfully: {0} entries modified.',
     
     // Failures
-    'error edit timeslot' => 'Failed to save timeslot',
-  	'error delete timeslot' => 'Failed to delete the selected timeslot',
-  	'error add timeslot' => 'Failed to add timeslot',
-  	'error open timeslot' => 'Failed to open timeslot',
-  	'error close timeslot' => 'Failed to close timeslot',
-    'error start time after end time' => 'Failed to save timeslot: the start time must happen before the end time',
+    'error edit timeslot' => 'Failed to save time entry',
+  	'error delete timeslot' => 'Failed to delete the selected time entry',
+  	'error add timeslot' => 'Failed to add time entry',
+  	'error open timeslot' => 'Failed to open time entry',
+  	'error close timeslot' => 'Failed to close time entry',
+    'error start time after end time' => 'Failed to save time entry: the start time must happen before the end time',
     'error form validation' => 'Failed to save object because some of its properties are not valid',
     'error delete owner company' => 'Owner company can\'t be deleted',
     'error delete message' => 'Failed to delete selected note',
@@ -326,12 +329,14 @@
 
   	
     // Access or data errors
+    'incorrect date' => 'Incorrect date',
     'no access permissions' => 'You don\'t have permissions to access requested page',
     'invalid request' => 'Invalid request!',
     
     // Confirmation
     'confirm delete billing category' => "Are you sure you want to delete the selected billing category?",
-    'confirm cancel work timeslot' => "Are you sure you want to cancel the current timeslot?",
+    'confirm cancel work timeslot' => "Are you sure you want to cancel the current time entry?",
+    'confirm discard work timeslot' => 'Are you sure you want to discard the current time entry?',
     'confirm delete mail account' => 'Warning: All emails belonging to this account will be deleted as well, are you sure that you want to delete this mail account?',
     'confirm delete message' => 'Are you sure that you want to delete this note?',
     'confirm delete milestone' => 'Are you sure that you want to delete this milestone?',
@@ -597,6 +602,7 @@
   	'confirm delete template' => 'Are you sure that you want to delete this template?',
   	'success delete template' => 'Template \'{0}\' has been deleted',
   	'success add template' => 'Template has been added',
+	'success copy template' => 'Template copied successfully',
   
   	'log add companies' => '\'{0}\' added',
   	'log edit companies' => '\'{0}\' updated',
@@ -668,6 +674,7 @@
   	'log read projectmilestones' => 'Viewed \'{0}\'',
   	'log read projectwebpages' => 'Viewed \'{0}\'',
   	'log read reports' => 'Viewed \'{0}\'',
+    'log read invoice' => 'Viewed \'{0}\'',
     
   
   	'error assign workspace' => 'Failed to assign template to workspace',
@@ -707,6 +714,7 @@
   	'failed to assign contact due to permissions' => 'You don\'t have permissions to create or edit people on these workspaces: {0}',
   
   	'weblink dnx' => 'Requested link doesn\'t exist.',
+  	'webpage dnx' => 'Requested link doesn\'t exist.',
   
   	'success markasread files' => 'Marked as read',
   	'success markasunread files' => 'Marked as unread',
@@ -744,8 +752,8 @@
   	'the Projects' => 'the workspace',
   	'the ProjectTasks' => 'the task',
   	'the ProjectWebpages' => 'the webpage',
-  	'the Timeslots' => 'the timeslot',
-        'the Time' => 'the timeslot',
+  	'the Timeslots' => 'the time entry',
+        'the Time' => 'the time entry',
       
         'the user notification' => 'the user',
   	'the comment notification' => 'the comment',
@@ -759,8 +767,8 @@
   	'the task notification' => 'the task',
   	'the webpage notification' => 'the webpage',
     'the weblink notification' => 'the link',
-  	'the timeslot notification' => 'the timeslot',
-        'the time notification' => 'the timeslot',
+  	'the timeslot notification' => 'the time entry',
+        'the time notification' => 'the time entry',
   
   	'objects moved to member success' => 'The objects has been added to {0} successfully',
 	'object moved to member success' => 'The object has been added to {0} successfully',
@@ -771,10 +779,45 @@
   	'disable' => 'Inactivate',
   	'and xx more' => 'and {0} more.',
   	
+  	'all previous tasks have been completed' => 'All previous tasks of \'{0}\' have been completed',
+  	'task x can be started' => 'All previous tasks have been completed. Now the task \'{0}\' can be started.',
+  	
   	'permissions successfully saved' => 'Permissions saved successfully',
   	
   	'cannot delete file' => 'You don\'t have permissions to delete file \'{0}\'',
-	'unknown' => 'Unknown',
+      
+      'success created token' => 'Token has been created succesfully',
+      'success edited token' => 'Token has been edited succesfully',
+      'success deleted token' => 'Token has been deleted succesfully',
+      'config_start_calc'=>'Move the start date/time',
+      'config_end_calc'=>'Move the end date/time',
+      'config_dates_calc'=>'Move the opposite date (keep the same input time)',
+      'config_hours_calc'=>'Change the worked time',
+      'always_show_modal'=>'Ask me every time',
+      'How should we adjust'=>'How should we adjust?',
+      'Did you start sooner'=>'Did you start sooner?',
+      'Did you end later'=>'Did you end later?',
+      'You changed the length of your time record'=>'You changed the length of your time record',
+      'You changed a date in your time record'=>'You changed a date in your time record',
+      'Did you start later'=>'Did you start later?',
+      'Did you end sooner'=>'Did you end sooner?',
+
+      'What do you prefer' => 'What do you prefer?',
+
+      'Did you want change the date value'=>'Did you want change the date value?',
+      'Did you want change the time value'=>'Did you want change the time value?',
+
+      'Remember my selection' => 'Remember my selection',
+      'accept'=>'Accept',
+      'not classified here'=>'Not classified here',
+
+  	'x members deleted' => '{1} {0} deleted succesfully.',
+  	'x members deleted y members not deleted' => '{1} {0} deleted succesfully, {2} {0} not deleted.',
+    'project and client are not associated with each other' => 'Project and client are not associated with each other',
+    'client is not assigned' => 'Client is not assigned',
+	'there are no timeslots to delete' => 'There are no time entries to delete',
+	'task is linked to time expenses are you sure you want to delete' => 'Any time entry and/or expense linked to this task won\'t be deleted but it will remain now unlinked. Do you want to proceed?',
+    'The variable contains an invalid JSON format. Please check the JSON format and try again.' => 'The variable contains an invalid JSON format. Please check the JSON format and try again.',
   ); // array
 
 ?>

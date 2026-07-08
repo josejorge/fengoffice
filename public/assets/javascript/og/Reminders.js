@@ -5,7 +5,11 @@ og.reminderDurationTypes = {
 	"1440":"days",
 	"10080":"weeks"
 };
-og.addReminder = function(parent, context, type, duration, duration_type, for_subscribers, button) {
+og.addReminder = function(parent, context, type, duration, duration_type, for_subscribers, button, date_reminder=null , type_object=null) {
+	if (typeof(og.addAdvancedReminder) == 'function') {
+		return og.addAdvancedReminder(parent, context, type, duration, duration_type, for_subscribers, button, date_reminder, type_object);
+	}
+	
 	var count = parent.getElementsByTagName("div").length;
 	var div = document.createElement("div");
 	var html = '<select name="reminder_type[' + context + '][' + count + ']">';

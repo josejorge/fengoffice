@@ -36,15 +36,15 @@ ogTasks.addNewTaskGroup = function(data, group_index, draw){
 				}				
 			}
 			if(target_id == 0){
-				$("#ogTasksPanelColNames").after(group_html);				
+				$("#ogTasksPanelAddNewTaskThead").after(group_html);				
 			}else{
-				$("#ogTasksPanelGroupCont"+target_id).after(group_html);
-			}			
+				$("#ogTasksPanelGroup"+target_id+"Totals").after(group_html);
+			}	
+				
 		}else{
 			$("#tasksPanelContainer").append(group_html);
-		}		
+		}
 	};
-	
 	//keep all values for gorup object but change group_tasks from task data to ogTasksTask object
 	for (var j = 0; j < data.groups[group_index].group_tasks.length; j++){
 		var task_data = data.groups[group_index].group_tasks[j];
@@ -54,6 +54,10 @@ ogTasks.addNewTaskGroup = function(data, group_index, draw){
 	}
 	
 	ogTasks.Groups.push(group);
+	
+	if (typeof draw != 'undefined' && draw) {
+		ogTasks.initDragDrop();
+	}
 };
 
 ogTasks.removeTaskGroup = function(group){
@@ -63,8 +67,9 @@ ogTasks.removeTaskGroup = function(group){
 		}
 	}
 	
-	if($("#ogTasksPanelGroupCont"+group.group_id).length > 0){
-		$("#ogTasksPanelGroupCont"+group.group_id).remove();
+	if($("#ogTasksPanelGroup"+group.group_id).length > 0){
+		$("#ogTasksPanelGroup"+group.group_id).remove();
+		$("#ogTasksPanelGroup"+group.group_id+"Totals").remove();
 	}
 };
 
@@ -75,30 +80,35 @@ ogTasks.updateTaskGroups = function(data, add_new_tasks){
 	var displayCriteria = bottomToolbar.getDisplayCriteria();
 	var drawOptions = topToolbar.getDrawOptions();
 	
-	for (var i = 0; i < data.groups.length; i++){
-		var group = ogTasks.getGroup(data.groups[i].group_id);
-		
-		if (typeof add_new_tasks != 'undefined'){			
+	if (data && data.groups) {
+		for (var i = 0; i < data.groups.length; i++){
+			if (!data.groups[i]) continue;
+			var group = ogTasks.getGroup(data.groups[i].group_id);
+			if (!group) continue;
 			
-			for (var j = 0; j < data.groups[i].group_tasks.length; j++){
-				var task_data = data.groups[i].group_tasks[j];
-				var task = ogTasksCache.addTasks(task_data);
+			if (typeof add_new_tasks != 'undefined'){
 				
-				ogTasks.addTaskToGroup(group, task, true);							
-			}		
+				for (var j = 0; j < data.groups[i].group_tasks.length; j++){
+					var task_data = data.groups[i].group_tasks[j];
+					var task = ogTasksCache.addTasks(task_data);
+					
+					ogTasks.addTaskToGroup(group, task, true);
+				}
+			}
+			
+			//update group params
+			for (var key in data.groups[i]){
+				if(key != 'group_tasks' && data.groups[i]){
+					group[key] = data.groups[i][key];
+				}
+			}
+			group.rendering = false;
+			
+			//update group totals
+			$("#ogTasksPanelGroup"+group.group_id+"Totals").replaceWith(ogTasks.newTaskGroupTotals(group));
+			
 		}
-		
-		//update group params
-		for (var key in data.groups[i]){							
-			if(key != 'group_tasks'){
-				group[key] = data.groups[i][key];
-			}												
-		}
-		group.rendering = false;	
-		
-		//update group totals
-		$("#group_totals_"+group.group_id).replaceWith(ogTasks.newTaskGroupTotals(group));
-	}	
+	}
 };
 
 ogTasks.getGroup = function(id){
@@ -138,7 +148,7 @@ ogTasks.addTaskToGroup = function(group, task, draw){
 			var displayCriteria = bottomToolbar.getDisplayCriteria();
 			var drawOptions = topToolbar.getDrawOptions();
 						
-			$("#rx__no_tasks_info").remove(); 
+			$("#no_tasks_info").remove(); 
 			
 			ogTasks.drawTask(task, drawOptions, displayCriteria, group.group_id, 1);
 			
@@ -191,12 +201,20 @@ ogTasks.updateTaskGroupsForTask = function(data){
 	}
 	
 	//remove task from old groups
+    var remove_task_groups_ids = new Array();
 	for (var j = 0; j < ogTasks.Groups.length; j++) {
 		var group = ogTasks.Groups[j];
 		if (group.group_tasks[task.id] && task_groups_ids.indexOf(group.group_id) == -1) {
 				ogTasks.removeTaskFromGroup(group, task);				
+            remove_task_groups_ids.push(group.group_id);
 		}
 	}
 	
-	ogTasks.refreshGroupsTotals();
+	//Refresh affected groups totals
+    for (var j = 0; j < task_groups_ids.length; j++) {
+        ogTasks.refreshGroupsTotals(task_groups_ids[j]);
+    }
+    for (var j = 0; j < remove_task_groups_ids.length; j++) {
+        ogTasks.refreshGroupsTotals(remove_task_groups_ids[j]);
+    }
 };

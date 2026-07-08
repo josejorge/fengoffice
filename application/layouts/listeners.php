@@ -15,6 +15,12 @@ og.eventManager.addListener('template object added',function(data){
 	}
 });
 
+og.eventManager.addListener('ask user to fix template repetitive tasks', function(data){
+	if (data.template_id && data.tasks) {
+		og.askUserToFixRepetitiveTemplateTasks(data);
+	}
+});
+
 og.eventManager.addListener('reload member restrictions', 
  	function (genid){ 
 		App.modules.addMemberForm.drawDimensionRestrictions(genid, document.getElementById(genid + 'dimension_id').value);
@@ -49,11 +55,9 @@ og.eventManager.addListener('reload tab panel',
 
 og.eventManager.addListener('reload user picture', 
  	function (data){
- 		var el = document.getElementById(data.el_id);
- 		if (el) el.src=data.url;
+ 		$("#"+data.el_id).attr('src', data.url);
  		if (data.file_id && data.hf_picture) {
- 	 		var hf = document.getElementById(data.hf_picture);
- 	 		if (hf) hf.value = data.file_id;
+ 			$("#"+data.hf_picture).val(data.file_id);
  		}
  	}
 );
@@ -70,9 +74,10 @@ og.eventManager.addListener('update dimension tree node',
 			if (tree && !tree.hidden){
 
 				var callback_extra_params = {
-												dim_id:data.dim_id,
-												member_id:data.member_id												
-											}; 
+					dim_id:data.dim_id,
+					select_node: data.select_node,
+					member_id:data.member_id
+				};
 				og.getMemberFromServer(data.member_id, og.updateDimensionTreeNode, callback_extra_params);					
 			}
 		}
@@ -193,7 +198,7 @@ og.eventManager.addListener('draft mail autosaved',
 
 og.eventManager.addListener('popup',
 	function (args) {
-		og.msg(args.title, args.message, 0, args.type, args.sound);
+		og.msg(args.title, args.message, args.timeout | 0, args.type, args.sound);
 	}
 );
 
@@ -254,15 +259,24 @@ og.eventManager.addListener('after member save',
 
 og.eventManager.addListener('try to select member',
 	function (member) {
+		if (og.resettingAllTrees) return;
+
+		var milis = 1000;
+		if (member.timeout_milis) milis = member.timeout_milis;
+		
+		if (!og.try_to_select_member_intervals) og.try_to_select_member_intervals = {};
+		
 		var interval = setInterval(function(){
 			var tree = Ext.getCmp("dimension-panel-" + member.dimension_id);
 			var treenode = tree ? (member.id > 0 ? tree.getNodeById(member.id) : tree.getRootNode()) : null;
 			if (treenode) {
 				treenode.fireEvent('click', treenode);
 				og.Breadcrumbs.refresh(treenode);
+				let interval = og.try_to_select_member_intervals[treenode.id];
 				clearInterval(interval);
 			}
-		}, 1000);
+		}, milis);
+		og.try_to_select_member_intervals[member.id] = interval;
 	}
 );
 
@@ -368,7 +382,7 @@ og.eventManager.addListener('ask to select member',
 );
 
 og.eventManager.addListener('member tree node click',
-	function (node) {			
+	function (node) {
 		var interval = setInterval(function(){
 			var tree = node.ownerTree;
 			var treenode = tree ? tree.getNodeById(node.id) : null;
@@ -376,6 +390,62 @@ og.eventManager.addListener('member tree node click',
 				og.Breadcrumbs.refresh(treenode);
 				clearInterval(interval);
 			}
+			
+			var tabs_menu = Ext.getCmp('tabs-panel');
+
+			$.each(og.contextManager.dimensionMembers,function(dimId,value){
+				if (Array.isArray(value) && value.length > 1){
+					var member = og.getMemberFromOgDimensions(value[1])[0];
+					if (typeof member == 'object' && member.dimension_id != ''){
+						var has_childs_same_type = og.dimension_object_type_descendants[member.dimension_id][member.object_type_id].indexOf(String(member.object_type_id)) !== -1;
+
+						if (!has_childs_same_type){
+							var go_to_first_tab = false;
+							var active_tab = tabs_menu.getActiveTab();
+							
+							$.each(tabs_menu.items.items, function(index,tab){								
+								if (tab.dimensionId == member.dimension_id && tab.typeId == member.object_type_id){
+									if (active_tab.dimensionId == member.dimension_id && active_tab.typeId == member.object_type_id) {
+										go_to_first_tab = true;
+									}
+									
+									$("#tabs-panel__"+tab.id).hide();
+									if (!og.hiddenTabs.includes(tab.id)){
+										og.hiddenTabs.push(tab.id);
+									}																	
+								}
+							});
+
+							if (go_to_first_tab) {
+								if (tabs_menu.items.get('overview-panel')){
+									tabs_menu.setActiveTab('overview-panel');
+								}else{
+									tabs_menu.setActiveTab(tabs_menu.items.items[0]);
+								}
+							}
+						}else{
+							$.each(tabs_menu.items.items, function(index,tab){
+								if (tab.dimensionId == member.dimension_id && tab.typeId != member.object_type_id){																
+									$("#tabs-panel__"+tab.id).show();
+									if ( og.hiddenTabs.indexOf(tab.id) !== -1 ){
+										og.hiddenTabs.splice(og.hiddenTabs.indexOf(tab.id),1);
+									}
+								}								
+							});
+						}
+					}										
+				}else{
+					$.each(tabs_menu.items.items, function(index,item){
+						if (item.dimensionId == dimId){
+							$("#tabs-panel__"+item.id).show();
+							if((ax = og.hiddenTabs.indexOf(item.id)) !== -1) {
+								og.hiddenTabs.splice(ax,1);
+					        }							
+						}
+					});
+				}
+			});
+
 		}, 700);
 	}	
 );
@@ -417,6 +487,122 @@ og.eventManager.addListener('mark_error_field',
 );
 
 
+og.eventManager.addListener('ask to change subtasks dates',
+	function (data) {
+		var s = data.sd_diff;
+		var d = data.dd_diff;
+
+		if (d) {
+			var dd_str = (d.days > 0 ? ' '+d.days+' '+lang('days') : '') + (d.hours > 0 ? ', '+d.hours+' '+lang('hours') : '') + 
+				(d.mins > 0 ? ', '+d.mins+' '+lang('minutes') : '') + ' '+(d.sign >= 0 ? lang('forward'):lang('backward'));
+		}
+		if (s) {
+			var sd_str = (s.days > 0 ? ' '+s.days+' '+lang('days') : '') + (s.hours > 0 ? ', '+s.hours+' '+lang('hours') : '') + 
+				(s.mins > 0 ? ', '+s.mins+' '+lang('minutes') : '') + ' '+(s.sign >= 0 ? lang('forward'):lang('backward'));
+		}
+
+		var question = null;
+		if (d && s) {
+			question = lang('do you want to move subtasks due date X and start date Y', dd_str, sd_str);
+		} else if (d) {
+			question = lang('do you want to move subtasks due date X', dd_str);
+		} else if (s) {
+			question = lang('do you want to move subtasks start date X', sd_str);
+		}
+		if (question) {
+			var info = lang('task start or due date has been changed');
+			var div = document.createElement('div');
+			div.style = "border-radius: 5px; background-color: #fff; padding: 10px; width: 400px;";
+			var genid = Ext.id();
+			div.innerHTML = '<div><label class="coInputTitle">'+lang('modify subtasks dates')+'</label></div>'+
+				'<div id="'+genid+'_question">'+ info + '</br>' + question+'</div>'+
+				'<div id="'+genid+'_buttons">'+
+				'<button class="yes submit blue">'+lang('yes')+'</button><button class="no submit blue">'+lang('no')+'</button>'+
+				'</div><div class="clear"></div>';
+
+			var modal_params = {
+				'escClose': false,
+				'overlayClose': false,
+				'closeHTML': '<a id="'+genid+'_close_link" class="modal-close" title="'+lang('close')+'"></a>',
+				'onShow': function (dialog) {
+					$("#"+genid+"_close_link").addClass("modal-close-img");
+					$("#"+genid+"_buttons").css('text-align', 'right').css('margin', '10px 0');
+					$("#"+genid+"_question").css('margin', '10px 0');
+					$("#"+genid+"_buttons button.yes").css('margin-right', '10px').click(function(){
+						og.openLink(og.getUrl('task', 'advance_subtasks_dates'), {post: {
+							task_id: data.task_id,
+							dd_diff: d ? Ext.util.JSON.encode(d) : '',
+							sd_diff: s ? Ext.util.JSON.encode(s) : ''
+						}});
+						$('.modal-close').click();
+					});
+					$("#"+genid+"_buttons button.no").css('margin-right', '10px').click(function(){
+						$('.modal-close').click();
+					});
+			    }
+			};
+			setTimeout(function() {
+				$.modal(div, modal_params);
+			}, 100);
+		}
+	}
+);
+
+
+og.eventManager.addListener('ask to complete subtasks',
+	function (data) {
+		if (data && data.parent_id) {
+			var question = lang('complete task and subtask');
+			var div = document.createElement('div');
+			var genid = Ext.id();
+			div.innerHTML = '<div style="border-radius: 5px; background-color: #fff; padding: 10px; width: 400px;">'+ 
+				'<div><label class="coInputTitle">'+lang('update subtasks')+'</label></div>'+
+				'<div id="'+genid+'_question">'+ question +'</div>'+
+				'<div id="'+genid+'_buttons">'+
+				'<button class="yes submit blue">'+lang('yes')+'</button><button class="no submit blue">'+lang('no')+'</button>'+
+				'</div><div class="clear"></div></div>';
+
+			var modal_params = {
+				'escClose': false,
+				'overlayClose': false,
+				'closeHTML': '<a id="'+genid+'_close_link" class="modal-close" title="'+lang('close')+'"></a>',
+				'onShow': function (dialog) {
+					$("#"+genid+"_close_link").addClass("modal-close-img");
+					$("#"+genid+"_buttons").css('text-align', 'right').css('margin', '10px 0');
+					$("#"+genid+"_question").css('margin', '10px 0');
+					$("#"+genid+"_buttons button.yes").css('margin-right', '10px').click(function(){
+
+						var pids = (data.parent_id+"").split(',');
+						for (var k=0; k<pids.length; k++) {
+						  og.openLink(og.getUrl('task', 'complete_subtasks', {id: pids[k]}), {
+							callback: function(success, cbdata) {
+								if (success && cbdata && cbdata.tasks) {
+									for (var i=0; i<cbdata.tasks.length; i++) {
+										var task = cbdata.tasks[i];
+										if (task) {
+											var task_added = ogTasksCache.addTasks(task);
+											ogTasks.UpdateTask(task_added.id, false);
+										}
+									}
+								}
+							}
+						  });
+						}
+						$('.modal-close').click();
+					});
+					$("#"+genid+"_buttons button.no").css('margin-right', '10px').click(function(){
+						$('.modal-close').click();
+					});
+			    }
+			};
+			setTimeout(function() {
+				$.modal(div, modal_params);
+			}, 100);
+		}
+	}
+);
+
+
 og.eventManager.addListener('new user added', 
  	function (data){
  		if (data && data.id > 0) { 
@@ -455,4 +641,228 @@ og.eventManager.addListener('ask to assign default permissions',
 		}
 	}
 );
+
+og.eventManager.addListener('update last member list groups info', 
+	function (data){
+		if (!og.member_list_groups_info) og.member_list_groups_info = {};
+		for (k in data) {
+			if (typeof(k)=='function') continue;
+			og.member_list_groups_info[k] = data[k];
+		}
+	}
+);
+
+og.eventManager.addListener('add tasks info to tasks list', 
+	function (data) {
+		if (data && data.tasks && data.tasks.length > 0) {
+			ogTasks.drawTasksRowsAfterAddEdit(data);
+		}
+	}
+);
+
+
+og.eventManager.addListener('member parent changed', 
+	function (data) {
+		var tree = Ext.getCmp("dimension-panel-"+data.d);
+		if (tree) {
+			// update old parent
+			var old_parent = tree.getNodeById(data.op);
+			if (old_parent && !old_parent.hasChildNodes()) {
+				var mobj = old_parent.attributes;
+				
+				og.updateDimensionTreeNode(data.d, mobj, {});
+			}
+			
+			// ensure that the old parent doesn't have any more childs before removing the expand tool.
+			if (old_parent && old_parent.getDepth() > 0) {
+				og.openLink(og.getUrl('dimension', 'get_member_childs', { member: data.op, limit: 1, offset: 0, tree_id:tree.id }), {
+					hideLoading:true, 
+					hideErrors:true,
+	    			callback: function(success, data){
+	    				//var dimension_tree = Ext.getCmp('dimension-panel-'+data.dimension);
+	    				var dimension_tree = Ext.getCmp(data.tree_id);
+	    				if (dimension_tree && data.members.length == 0) {
+							var p_node = dimension_tree.getNodeById(data.member_id);
+							if (p_node) {
+								p_node.attributes.expandable = false;
+								p_node.attributes.leaf = true;
+								p_node.reload();
+							}
+	    				}
+	    			}
+	    		});
+			}
+
+			// update current parent
+			var parent = tree.getNodeById(data.p);
+			if (parent) {
+				var mobj = parent.attributes;
+				mobj.expandable = true;
+				og.updateDimensionTreeNode(data.d, mobj, {});
+			}
+		}
+	}
+);
+
+og.eventManager.addListener('reload custom property definition', 
+	function (event_data) {
+		og.openLink(og.getUrl('object', 'get_cusotm_property_columns'), {
+			callback: function(success, data){
+				if (typeof data.properties != 'undefined' && !(data.properties instanceof Array )) {
+					og.custom_properties_by_type = data.properties;
+
+					var type_name = event_data.ot.name;
+					if (og.custom_properties_by_type[type_name]) {
+						var man_id = type_name + "-manager";
+						var man = Ext.getCmp(man_id);
+						if (!man) {
+							man_id = type_name + "s-manager";
+							man = Ext.getCmp(man_id);
+						}
+						if (man) {
+							var cm = man.getColumnModel();
+							if (cm && cm.config) {
+								
+								// remove all custom property columns
+								for (var i=cm.config.length-1; i>=0; i--) {
+									if (cm.config[i].id && cm.config[i].id.indexOf("cp_") == 0) {
+										cm.config.splice(i, 1);
+									}
+								}
+								
+								// add new columns for all available custom properties
+								man.hiddenColumnIds = [];
+								for (var j=0; j<og.custom_properties_by_type[type_name].length; j++) {
+									var cp = og.custom_properties_by_type[type_name][j];
+									var is_hidden = parseInt(cp.show_in_lists) == 0;
+									if (is_hidden) {
+										man.hiddenColumnIds.push('cp_' + cp.id);
+									}
+									cm.config.push({
+										id: 'cp_' + cp.id,
+										hidden: is_hidden,
+										header: cp.name,
+										align: cp.cp_type=='numeric' ? 'right' : 'left',
+										dataIndex: 'cp_' + cp.id,
+										sortable: true,
+										renderer: og.clean
+									});
+								}
+								
+								// reload column model configuration
+								cm.fireEvent('configchange');
+								
+								// ensure that grid height is 100%
+								$("#"+man_id+" .x-panel-body").css('height', '100%');
+								
+								// reload grid
+								man.load();
+							}
+						}
+					}
+				}
+			}
+		});
+	}
+);
+
+// hack to prevent toolbars from dissapear, when entenring an object, collapsing the left panel and closing the object => the grid toolbar dissapears
+og.eventManager.addListener('after grid panel load', function(data){
+	var cp = Ext.getCmp("center-panel");
+	if (cp) {
+		var cph = cp.getInnerHeight();
+		cp.setHeight(cph-1); // change height to fire the resize event, so it relocates the toolbars that were bad positioned
+		cp.setHeight(cph); // restore original height
+	}
+
+	if (data.man && data.man.id.indexOf('_timeslots_module_grid') >= 0) {
+		og.module_timeslots_grid.start_clocks();
+	}
+});
+
+og.eventManager.addListener('update tasks in list', function(data) {
+	if (data.tasks && data.tasks.length > 0) {
+		for (var i=0; i<data.tasks.length; i++) {
+			var t = data.tasks[i];
+			ogTasks.drawTaskRowAfterEdit({'task': t});
+		}
+	}
+});
+
+
+// after loading the first tab, preload the members of small dimensions
+og.eventManager.addListener('tab loaded', 
+	function (tab_id) {
+		if (!og.simple_member_selectors || !og.simple_member_selectors.store_cache) {
+			og.preload_small_dimension_members();
+		}
+ 	}
+);
+
+og.eventManager.addListener('show error message', function(data) {
+	if (data && data.message) {
+		og.err(data.message);
+	}
+});
+
+
+
+og.eventManager.addListener('prompt user trash objects',
+	function (data) {
+		
+		if (data && data.ids && data.ids.length) {
+			var question = data.message;
+			var div = document.createElement('div');
+			var genid = Ext.id();
+			div.innerHTML = '<div style="border-radius: 5px; background-color: #fff; padding: 10px; width: 400px;">'+ 
+				'<div><label class="coInputTitle">'+lang('confirm delete task')+'</label></div>'+
+				'<div id="'+genid+'_question">'+ question +'</div>'+
+				'<div id="'+genid+'_buttons">'+
+				'<button class="yes submit blue">'+lang('yes')+'</button><button class="no submit blue">'+lang('no')+'</button>'+
+				'</div><div class="clear"></div></div>';
+
+			var modal_params = {
+				'escClose': false,
+				'overlayClose': false,
+				'closeHTML': '<a id="'+genid+'_close_link" class="modal-close" title="'+lang('close')+'"></a>',
+				'onShow': function (dialog) {
+					$("#"+genid+"_close_link").addClass("modal-close-img");
+					$("#"+genid+"_buttons").css('text-align', 'right').css('margin', '10px 0');
+					$("#"+genid+"_question").css('margin', '10px 0');
+					$("#"+genid+"_buttons button.yes").css('margin-right', '10px').click(function(){
+
+						var params = {
+							prompt_confirmed: 1,
+							req_channel: data.req_channel
+						};
+						if (data.from_view) {
+							params.object_id = data.ids[0];
+						} else {
+							params.ids = data.ids;
+							params.reload = 1;
+						}
+
+						og.openLink(og.getUrl('object', 'trash', params), {
+							callback: function(success, cbdata) {
+								if (success) {
+								//	og.eventManager.fireEvent('reload current panel');
+								}
+							}
+						});
+						$('.modal-close').click();
+					});
+					$("#"+genid+"_buttons button.no").css('margin-right', '10px').click(function(){
+						$('.modal-close').click();
+					});
+			    }
+			};
+			setTimeout(function() {
+				$.modal(div, modal_params);
+			}, 100);
+		}
+	}
+);
+
+
+
 </script>

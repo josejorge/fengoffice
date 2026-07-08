@@ -18,7 +18,7 @@ class MailAccount extends BaseMailAccount {
 	function getOwner()
 	{
 		if (is_null($this->owner)){
-			$this->owner = Contacts::findById($this->getContactId());
+			$this->owner = Contacts::instance()->findById($this->getContactId());
 		}
 		return $this->owner;
 	}
@@ -30,7 +30,7 @@ class MailAccount extends BaseMailAccount {
 	 * @param array $errors
 	 * @return null
 	 */
-	function validate(&$errors) {
+	function validate($errors) {
 		if(!$this->validatePresenceOf('name')) {
 			$errors[] = lang('mail account name required');
 		} // if
@@ -52,7 +52,7 @@ class MailAccount extends BaseMailAccount {
 	 * @return one or more MailContents objects
 	 */
 	function getMailContents() {
-		return MailContents::findAll(array(
+		return MailContents::instance()->findAll(array(
 			'conditions' => '`account_id` = ' . DB::escape($this->getId()),
 			'order' => '`date` DESC'
 		)); // findAll
@@ -61,7 +61,7 @@ class MailAccount extends BaseMailAccount {
 	function getUids($folder = null, $limit = null) {
 		$sql = "SELECT `uid` FROM `" . MailContents::instance()->getTableName() . "` WHERE `account_id` = ". $this->getId();
 		if (!is_null($folder)) {
-			$sql .= " AND `imap_folder_name` = '$folder'";
+			$sql .= " AND `imap_folder_name` = ".DB::escape($folder);
 		}
 		if (!is_null($limit) && is_numeric($limit)) {
 			$sql .= " LIMIT $limit";
@@ -82,20 +82,37 @@ class MailAccount extends BaseMailAccount {
 		$box_cond = "";
 		$sql = "SELECT `uid` FROM `" . MailContents::instance()->getTableName() . "` WHERE `account_id` = ". $this->getId();
 		if (!is_null($folder)) {
-			$box_cond = " AND `imap_folder_name` = '$folder'";
+			$box_cond = " AND `imap_folder_name` = ".DB::escape($folder);
 		}
 		if ($this->getIsImap()) {			
 			$max_param = "object_id";
 		}else{
 			$max_param = "received_date";
 		}
-		$sql .= "$box_cond AND $max_param = (SELECT max($max_param) FROM `". MailContents::instance()->getTableName() . "` WHERE `account_id` = ". $this->getId(). " AND `state` in (0,1,4) $box_cond) LIMIT 1";
+		$sql .= "$box_cond AND $max_param = (SELECT max($max_param) FROM `". MailContents::instance()->getTableName() . "` WHERE `account_id` = ". $this->getId(). " AND `state` in (0,1,4,5) $box_cond) LIMIT 1";
 		
 		$res = DB::execute($sql);
 		$rows = $res->fetchAll();
 		if (is_array($rows) && count($rows) > 0){
 			$maxUID = $rows[0]['uid'];
 		}
+		return $maxUID;
+	}
+	
+	function getImapMaxUID($folder = ''){
+		$maxUID = "";
+		
+		$sql = "
+			SELECT `last_uid_in_folder` as uid FROM `".TABLE_PREFIX."mail_account_imap_folder`
+			WHERE `account_id` = ".$this->getId()." AND `folder_name` = ".DB::escape($folder)."
+			LIMIT 1;
+		";
+		
+		$row = DB::executeOne($sql);
+		if ($row) {
+			$maxUID = $row['uid'];
+		}
+		
 		return $maxUID;
 	}
 	
@@ -173,7 +190,7 @@ class MailAccount extends BaseMailAccount {
 	 * @param Project $project
 	 * @return booelean
 	 */
-	function canAdd(Contact $user) {
+	static function canAdd(Contact $user) {
 		return can_add_mail_accounts($user);
 	} // canAdd
 
@@ -250,20 +267,20 @@ class MailAccount extends BaseMailAccount {
 			session_commit();
 			ini_set('memory_limit', '1024M');
 			
-			LinkedObjects::delete(array("(`object_id` IN (SELECT `object_id` FROM `".TABLE_PREFIX."mail_contents` WHERE `account_id` = " . DB::escape($this->getId()).")) 
+			LinkedObjects::instance()->delete(array("(`object_id` IN (SELECT `object_id` FROM `".TABLE_PREFIX."mail_contents` WHERE `account_id` = " . DB::escape($this->getId()).")) 
 				or (`rel_object_id` IN (SELECT `object_id` FROM `".TABLE_PREFIX."mail_contents` WHERE `account_id` = " . DB::escape($this->getId())."))")); 
 			
-      		SearchableObjects::delete(array("`rel_object_id` IN (SELECT `object_id` FROM `".TABLE_PREFIX."mail_contents` WHERE `account_id` = " . DB::escape($this->getId()).") "));
-			ReadObjects::delete("`rel_object_id` IN (SELECT `object_id` FROM `".TABLE_PREFIX."mail_contents` WHERE `account_id` = " . DB::escape($this->getId()).") ");
+      		SearchableObjects::instance()->delete(array("`rel_object_id` IN (SELECT `object_id` FROM `".TABLE_PREFIX."mail_contents` WHERE `account_id` = " . DB::escape($this->getId()).") "));
+			ReadObjects::instance()->delete("`rel_object_id` IN (SELECT `object_id` FROM `".TABLE_PREFIX."mail_contents` WHERE `account_id` = " . DB::escape($this->getId()).") ");
 			
-			$account_email_ids = MailContents::findAll(array('id' => true, 'conditions' => '`account_id` = ' . DB::escape($this->getId()), 'include_trashed' => true));
+			$account_email_ids = MailContents::instance()->findAll(array('id' => true, 'conditions' => '`account_id` = ' . DB::escape($this->getId()), 'include_trashed' => true));
 			if (count($account_email_ids) > 0) {
-				MailDatas::delete('id IN ('.implode(',', $account_email_ids).')');
-				MailContents::delete('`account_id` = ' . DB::escape($this->getId()));
+				MailDatas::instance()->delete('id IN ('.implode(',', $account_email_ids).')');
+				MailContents::instance()->delete('`account_id` = ' . DB::escape($this->getId()));
 			}
 		}
 		if ($this->getIsImap()) {
-			MailAccountImapFolders::delete('account_id = ' . $this->getId());
+			MailAccountImapFolders::instance()->delete('account_id = ' . $this->getId());
 		}
 		parent::delete();
 	}
@@ -330,5 +347,76 @@ class MailAccount extends BaseMailAccount {
 		}
 		return $return ;
 	}
+	
+	
+	/**
+	 * Makes the imap connection and returns a Net_IMAP object
+	 * @return Net_IMAP
+	 */
+	function imapConnect() {
+		
+		require_once 'Net/IMAP.php';
+		
+		$ret = null;
+
+		if($this->getUsesOauth2()){
+
+			$imap_configs = array(
+				'host' => $this->getServer(),
+				'port' => $this->getIncomingSslPort(),
+				'encryption' => 'ssl'
+			);
+			Hook::fire('get_imap_connect_config_using_mail_account', array('account' => $this), $imap_configs);
+			$server = $imap_configs['encryption'] . '://' . $imap_configs['host'];
+
+			$imap = new Net_IMAP($ret,  $server, $imap_configs['port'], null, null);
+			
+		} else if ($this->getIncomingSsl()) {
+			
+			if ($this->getIncomingSslVerifyPeer()) {
+				$options = null;
+			} else {
+				$options = array('ssl' => array());
+				$options['ssl']['verify_peer'] = FALSE;
+				$options['ssl']['verify_peer_name'] = FALSE;
+			}
+			
+			$imap = new Net_IMAP($ret, "ssl://" . $this->getServer(), $this->getIncomingSslPort(), null, $options);
+			
+		} else {
+			$imap = new Net_IMAP($ret, "tcp://" . $this->getServer());
+		}
+		
+		//This function is not static. A better exception handler should be applied.
+		//Investigate isError, and wich errors can IMAP throw.
+		//This library is long deprecated and should be replaced.
+		if (PEAR::isError($ret)) {
+			debug_log("IMAP connection error: ".$ret->getMessage(), "sent_emails_sync.log");
+			throw new Exception($ret->getMessage());
+		}
+		
+		return $imap;
+	}
+
+	function imapLogin($imap, $use_authenticate = null, $select_mail_box = false) {
+		$ret = true;
+
+		$imap_login_config = array(
+			'email' => $this->getEmail(),
+			'password' => MailUtilities::ENCRYPT_DECRYPT($this->getPassword()),
+			'use_authenticate' => $use_authenticate,
+			'select_mail_box' => $select_mail_box
+		);
+
+		Hook::fire('get_imap_login_config_using_mail_account', array('account' => $this), $imap_login_config);
+		// Logger::log_r($imap_login_config);
+		$ret = $imap->login($imap_login_config['email'], 
+		                    $imap_login_config['password'],
+							$imap_login_config['use_authenticate'],
+							$imap_login_config['select_mail_box']);
+		
+		return $ret;
+	}
+	
 }
 ?>

@@ -5,7 +5,7 @@ class SearchController extends ApplicationController {
 	
 	/**
 	 * Debug mode (Dev only)
-	 * @var unknown_type
+	 * @var int unknown_type
 	 */
 	var $debug = 0 ;
 	
@@ -22,7 +22,7 @@ class SearchController extends ApplicationController {
 	
 	/**
 	 * Search string
-	 * @var unknown_type
+	 * @var string unknown_type
 	 */
 	var $search_for ;
 	
@@ -30,19 +30,19 @@ class SearchController extends ApplicationController {
         
         /**
 	 * Search dimension
-	 * @var unknown_type
+	 * @var int
 	 */
 	var $search_dimension ;
 	
 	/**
 	 * Page size
-	 * @var unknown_type
+	 * @var int
 	 */
 	var $limit = 10;
 	
 	/**
 	 * Start integer
-	 * @var unknown_type
+	 * @var int
 	 */
 	var $start = 0 ;
 	
@@ -68,7 +68,7 @@ class SearchController extends ApplicationController {
 	 
 	/**
 	 * Max content size to show on results view
-	 * @var unknown_type
+	 * @var int
 	 */
 	var $contentSize = 200;
 	
@@ -93,7 +93,7 @@ class SearchController extends ApplicationController {
 	
 	/**
 	 * Max number of links to show on pagination
-	 * @var unknown_type
+	 * @var int
 	 */
 	var $maxPageLinks = 5 ;
 	
@@ -133,7 +133,7 @@ class SearchController extends ApplicationController {
 		$search_pieces= explode(" ", $search_for);
 		$search_string = "";
 		
-		$search_string = mysql_real_escape_string($search_for, DB::connection()->getLink());
+		$search_string = mysqli_real_escape_string(DB::connection()->getLink(), $search_for);
 		
 		$this->search_for = $search_for;
 		$limit = $this->limit;
@@ -211,16 +211,21 @@ class SearchController extends ApplicationController {
 				$condValue = array_key_exists('value', $condition) ? $condition['value'] : '';
 				if($condition['field_type'] == 'boolean'){
 					$value = array_key_exists('value', $condition);
-				}else if($condition['field_type'] == 'date'){
+				}else if($condition['field_type'] == 'date' || $condition['field_type'] == 'datetime'){
 					if ($condValue != '') {
-						$dtFromWidget = DateTimeValueLib::dateFromFormatAndString(user_config_option('date_format'), $condValue);
-						$value = date("m/d/Y", $dtFromWidget->getTimestamp());
+						$dtFromWidget = DateTimeValueLib::dateFromFormatAndString(user_config_option('date_format'), $condValue);						
+						if ($condition['field_type'] == 'date') {
+						    $value = $dtFromWidget->format('Y-m-d');
+						} elseif ($condition['field_type'] == 'datetime') {
+						    $value = $dtFromWidget->format('Y-m-d H:i:s');
+						}
+						
 					}
 				}else{
-					$value = mysql_real_escape_string($condValue, DB::connection()->getLink());
+				    $value = mysqli_real_escape_string(DB::connection()->getLink(), $condValue);
 				}			
-				$condition_condition = mysql_real_escape_string(array_var($condition, 'condition'), DB::connection()->getLink());
-				$condition_field_name = mysql_real_escape_string(array_var($condition, 'field_name'), DB::connection()->getLink());
+				$condition_condition = mysqli_real_escape_string(DB::connection()->getLink(), array_var($condition, 'condition'));
+				$condition_field_name = mysqli_real_escape_string(DB::connection()->getLink(), array_var($condition, 'field_name'));
 				$conditionLocal = "like";
 				tpl_assign('type_object', $type_object);
 				//CREO QUE ESTO ESTA MAL
@@ -231,7 +236,7 @@ class SearchController extends ApplicationController {
 				if (($condition['custom_property_id'] == 'phone_number') ){
 					$condition_field_name = 'number';
 					$joincp = 'JOIN  '.TABLE_PREFIX.'contact_telephones ct ON ct.contact_id = so.rel_object_id';
-				};				
+				};		
 				if (($condition['custom_property_id'] == 'email_address') ){
 					$condition_field_name = 'email_address';
 					$joincp = 'JOIN  '.TABLE_PREFIX.'contact_emails ce ON ce.contact_id = so.rel_object_id';
@@ -245,13 +250,12 @@ class SearchController extends ApplicationController {
 					$joincp = 'JOIN  '.TABLE_PREFIX.'contact_im_values cim ON cim.contact_id = so.rel_object_id';
 				};
 				
-				if ($condition_condition == "=" or $condition_condition == ">" or $condition_condition == "<" or $condition_condition == "<>" or $condition_condition == ">=" or $condition_condition == "<="){
+				if ($condition_condition == "=" || $condition_condition == ">" || $condition_condition == "<" || $condition_condition == "<>" || $condition_condition == ">=" || $condition_condition == "<="){
 					$conditionLocal = $condition_condition;
 				};	
 				if($condition_field_name == "id"){
 					$condition_field_name = "o`.`id" ;
 				};			
-				
 				if($condition_condition == "like"){
 					$where_condiition .= " AND `" . $condition_field_name . "` " . "like" . " '%" . $value . "%' ";
 					$con = "like '%" . $value . "%' ";
@@ -264,6 +268,9 @@ class SearchController extends ApplicationController {
 				}else if($condition_condition == "not like"){
 					$where_condiition .= " AND `" . $condition_field_name . "` " . "not like" . " '%" . $value . "%' ";
 					$con = "not like '%" . $value . "%' ";
+				}else if($condition_condition == "=" || $condition_condition == ">" || $condition_condition == "<" || $condition_condition == "<>" || $condition_condition == ">=" || $condition_condition == "<="){
+					$where_condiition .= " AND `" . $condition_field_name . "` " . $condition_condition . " '" . $value . "' ";
+					$con = $condition_condition . " '" . $value . "' ";
 				}else{					
 					$where_condiition .= " AND `" . $condition_field_name . "` " . $conditionLocal . " '" . $value . "' ";
 					$con = $conditionLocal . " '" . $value . "' ";
@@ -277,11 +284,16 @@ class SearchController extends ApplicationController {
 					$where_condiition = $addressCondiition;
 					$joincp = 'JOIN  '.TABLE_PREFIX.'contact_addresses ca ON ca.contact_id = so.rel_object_id';
 				};
-				$conditions_view[$cont]['id'] = $condition['id'];
+				
+				if (isset($condition['custom_property_id'])){
+				    $custom_prop_id = $condition['custom_property_id'];
+				}				
+				$conditions_view[$cont]['id'] = $custom_prop_id;
 				$conditions_view[$cont]['custom_property_id'] = $custom_prop_id;
 				$conditions_view[$cont]['field_name'] = $condition['field_name'];
-				$conditions_view[$cont]['condition'] = $condition['condition'];
-				$conditions_view[$cont]['value'] = $value;
+				$conditions_view[$cont]['condition'] = $condition['condition'];				
+				$conditions_view[$cont]['value'] = $condValue;
+				
 				$cont++;
 			}
 			tpl_assign('conditions', $conditions_view);
@@ -290,13 +302,19 @@ class SearchController extends ApplicationController {
 				$search_string = array_var($search, 'text');
 				$where_condiition .= " AND so.content LIKE '%$search_string%'";
 			}
+			
+			//if is a CP, filter for this CP Id
+			if (isset($condition['custom_property_id']) and is_numeric($condition['custom_property_id'])){
+			    $where_condiition .= ' AND cp.custom_property_id = '.$condition['custom_property_id'];
+			}
+			
 			if($type_object){
-				$object_table = ObjectTypes::findById($type_object);
+				$object_table = ObjectTypes::instance()->findById($type_object);
 				$table = $object_table->getTableName();				
 			}
 
 			$sql = "
-			SELECT DISTINCT so.rel_object_id AS id
+			SELECT DISTINCT so.rel_object_id AS id, so.content
 			FROM ".TABLE_PREFIX."searchable_objects so
 			".$joincp."
 			INNER JOIN  ".TABLE_PREFIX.$table." nto ON nto.object_id = so.rel_object_id 
@@ -318,7 +336,7 @@ class SearchController extends ApplicationController {
 			$type_object = '';
 			
 			$sql = "	
-			SELECT DISTINCT so.rel_object_id AS id   
+			SELECT DISTINCT so.rel_object_id AS id, so.content
 			FROM ".TABLE_PREFIX."searchable_objects so
 			WHERE " . (($useLike) ? " so.content LIKE '%$search_string%' " : " MATCH (so.content) AGAINST ('\"$search_string\"' IN BOOLEAN MODE) ") . "  
 			AND (EXISTS
@@ -353,6 +371,7 @@ class SearchController extends ApplicationController {
 		tpl_assign('type_object', $type_object);
 		$db_search_results = array();
 		$search_results_ids = array();
+		$all_search_results = array();
 		
 		if(!$advanced){
 			$timeBegin = time();
@@ -360,10 +379,11 @@ class SearchController extends ApplicationController {
 			$timeEnd = time();
 			while ($row = $res->fetchRow() ) {
 				$search_results_ids[$row['id']] = $row['id'];
+				$all_search_results[$row['id']] = $row;
 			}
 		}
 		// Prepare results for view to avoid processing at presentation layer 
-		$search_results = $this->prepareResults($search_results_ids, $null, $limit);
+		$search_results = $this->prepareResults($search_results_ids, $null, $limit, $all_search_results);
 		
 		// Calculate or approximate total for pagination
 		$total = count($search_results_ids) + $start ;
@@ -477,7 +497,7 @@ class SearchController extends ApplicationController {
 		}
 				
 		$search_string = trim(array_var($_REQUEST, 'query', ''));
-		$search_string = mysql_real_escape_string($search_string, DB::connection()->getLink());
+		$search_string = mysqli_real_escape_string(DB::connection()->getLink(), $search_string);
 		$start = array_var($_REQUEST, 'start' , 0);
 		$orig_limit = array_var($_REQUEST, 'limit');
 		$limit = $orig_limit + 1;
@@ -493,38 +513,48 @@ class SearchController extends ApplicationController {
 		if(strlen($search_string) > 0) {
 			$this->search_for = $search_string;
 			$logged_user_pgs = implode(',', logged_user()->getPermissionGroupIds());
-			
+
+			$permissions_sql = "";
+
+			if(!logged_user()->isAdministrator()){
+                $permissions_sql = "
+                    AND (
+					            (o.object_type_id = $revisionObjectTypeId AND
+						            EXISTS (
+							            SELECT group_id FROM ".TABLE_PREFIX."sharing_table WHERE object_id  = ( SELECT file_id FROM ".TABLE_PREFIX."project_file_revisions WHERE object_id = o.id )
+							            AND group_id IN ($logged_user_pgs)
+						            )
+						        )
+						    OR (
+							        (EXISTS
+								        (SELECT object_id
+									    FROM  ".TABLE_PREFIX."sharing_table sh
+									    WHERE o.id = sh.object_id
+									    AND sh.group_id  IN ($logged_user_pgs)
+									    )
+								    )
+						    )
+					    ) 
+					 " . $can_see_all_tasks_cond . "
+                ";
+            }
+
 			$sql = "
 			SELECT DISTINCT so.rel_object_id AS id, so.content AS text_match, so.column_name AS field_match
 			FROM ".TABLE_PREFIX."searchable_objects so
 			WHERE " . (($useLike) ? " so.content LIKE '%$search_string%' " : " MATCH (so.content) AGAINST ('\"$search_string\"' IN BOOLEAN MODE) ") . "
 			AND (EXISTS
-				(SELECT o.id
-				 FROM  ".TABLE_PREFIX."objects o
-							 WHERE	o.id = so.rel_object_id AND (
-							 (o.object_type_id = $revisionObjectTypeId AND
-							 EXISTS (
-							 SELECT group_id FROM ".TABLE_PREFIX."sharing_table WHERE object_id  = ( SELECT file_id FROM ".TABLE_PREFIX."project_file_revisions WHERE object_id = o.id )
-									AND group_id IN ($logged_user_pgs)
-												)
-												)
-												OR (
-												(EXISTS
-												(SELECT object_id
-												FROM  ".TABLE_PREFIX."sharing_table sh
-										WHERE o.id = sh.object_id
-										AND sh.group_id  IN (
-											$logged_user_pgs
-														)
-														)
-														)
-														)
-														) AND o.object_type_id IN ($listableObjectTypeIds) " . $members_sql . $can_see_all_tasks_cond . "
-														)
-														)															
-						GROUP BY(id)	
-						ORDER BY(id) DESC							
-						LIMIT $start, $limit";
+				    (SELECT o.id
+				    FROM  ".TABLE_PREFIX."objects o
+					WHERE	o.id = so.rel_object_id 
+					    ". $permissions_sql ."
+					    AND o.object_type_id IN ($listableObjectTypeIds) 
+					    ". $members_sql ."
+				    )
+			    )															
+			GROUP BY(id)	
+			ORDER BY(id) DESC							
+			LIMIT $start, $limit";
 				
 			$rows = DB::executeAll($sql);
 			if (!is_array($rows)) $rows = array();
@@ -554,11 +584,12 @@ class SearchController extends ApplicationController {
 			}
 			
 			if(count($object_ids) > 0){
-				$result = ContentDataObjects::listing(array(
-						"extra_conditions" => " AND o.id IN (".implode(",",$object_ids).") ",
-						"include_deleted" => true,
+				// no need to call "listing", the permissions and member filters were already applied in the main query
+				// we can call the findAll methond of Objects class because we only need the generic properties
+				$objects = Objects::instance()->findAll(array(
+					"conditions" => "id IN (". implode(',', $object_ids) .")"
 				));
-				$objects = $result->objects;
+				
 				foreach ($objects as $object) {
 					foreach ($search_results as $key => $search_result) {
 						if($search_result['id'] == $object->getId()){
@@ -595,7 +626,7 @@ class SearchController extends ApplicationController {
 	
 	/**
 	 * Build pagination based on $total, $limit and $search_results
-	 * @param unknown_type $search_results
+	 * @param array $search_results
 	 */
 	private function buildPagination($search_results) {
 		$start = $this->start;
@@ -623,10 +654,10 @@ class SearchController extends ApplicationController {
 	 * Map parameters and make some grouping, orders limits not done in DB
 	 * 
 	 * @param unknown_type array of int 
-	 * @param unknown_type $filtered_results
-	 * @param unknown_type $total
+	 * @param array $filtered_results
+	 * @param int $total
 	 */
-	private function prepareResults($ids, &$filtered_results, $limit) {
+	private function prepareResults($ids, &$filtered_results, $limit, $all_search_results=array()) {
 		$return = array();
 		foreach ($ids as $search_result_id) {
 			$search_results = array();
@@ -646,10 +677,10 @@ class SearchController extends ApplicationController {
 			$search_result['type'] = $obj->getObjectTypeName();
 			$search_result['created_on'] = friendly_date($obj->getCreatedOn());
 			$search_result['updated_on'] = friendly_date($obj->getObjectTypeName() == 'mail' ? $obj->getSentDate() : $obj->getUpdatedOn());
-			$search_result['content'] = $this->highlightResult($obj->getSummary(array(
-				"size" => $this->contentSize,
-				"near" => $this->search_for
-			)));
+			
+			$searchable_object_text = $this->prepareMatchedText($obj, array_var($all_search_results, $obj->getId()));
+			$search_result['content'] = $this->highlightResult($searchable_object_text);
+			
 			hook::fire("search_result", $search_result, $search_result);
 			$return[] = $search_result;
 			$limit--;
@@ -657,7 +688,22 @@ class SearchController extends ApplicationController {
 		return $return;
 		
 	} 	
+
+	
+	private function prepareMatchedText($object, $search_result) {
+		$size = $this->contentSize;
+		$search_for = $this->search_for;
+		$text = $search_result['content'];
 		
+		$position = strpos($text, $search_for);
+		$spacesBefore = min(10, $position);
+		if ($size && strlen($text) > $size){
+			return utf8_safe(substr($text, $position - $spacesBefore, $size))."...";
+		} else {
+			return $text;
+		}
+	}
+	
 	private function prepareCreatedBy($name,$id){
 		return "<a href='".get_url('contact', 'card', array('id'=>$id))."'>".$name."</a>";
 	}
@@ -686,7 +732,7 @@ class SearchController extends ApplicationController {
 	
 	/**
 	 * Emphaisis around search keywords
-	 * @param unknown_type $content
+	 * @param string $content
 	 */
 	private function highlightResult($text) {
 		$pieces = explode(" ", $this->search_for);
@@ -699,7 +745,7 @@ class SearchController extends ApplicationController {
     
     /**
      * Emphaisis around one search keywords and 
-     * @param unknown_type $content
+     * @param string $content
      */
     private function highlightOneResult($text) {
     	$text = html_to_text($text);
@@ -707,7 +753,7 @@ class SearchController extends ApplicationController {
     	
     	if(strlen($text) > 100){
 	    	$text_ret = '...';    	    
-	    	$text_ret .= substr($text, strpos($text, $pieces[0]) , 100);
+	    	$text_ret .= substr_utf($text, strpos($text, $pieces[0]) , 100);
 	    	$text_ret .= '...';
     	}else{
     		$text_ret = $text;
@@ -740,14 +786,14 @@ class SearchController extends ApplicationController {
 	
 	/**
 	 * Cut results
-	 * @param unknown_type $content
-	 * @param unknown_type $size
+	 * @param string $content
+	 * @param int $size
 	 */
 	private function cutResult($content, $size = 200  ) {
 		$position = strpos($content,$this->search_for);
 		$spacesBefore = min(10, $position); 
 		if (strlen($content) > $size ){
-			return substr($content , $position - $spacesBefore, $size)."...";
+			return substr_utf($content , $position - $spacesBefore, $size)."...";
 			
 		}else{
 			return $content ;
@@ -792,7 +838,7 @@ class SearchController extends ApplicationController {
 				if ($cp->getType() != 'table')
 					$fields[] = array('id' => $cp->getId(), 'name' => $cp->getName(), 'type' => $cp->getType(), 'values' => $cp->getValues(), 'multiple' => $cp->getIsMultipleValues());
 			}
-			$ot = ObjectTypes::findById($report->getObjectTypeId());
+			$ot = ObjectTypes::instance()->findById($report->getObjectTypeId());
 			eval('$managerInstance = ' . $ot->getHandlerClass() . "::instance();");	
 	
 			$common_columns = Objects::instance()->getColumns(false);
@@ -836,7 +882,7 @@ class SearchController extends ApplicationController {
 				$values[] = array('id' => $milestone->getId(), 'name' => $milestone->getObjectName());
 			}
 		/*} else if($field == 'object_subtype'){
-			$object_types = ProjectCoTypes::findAll(array('conditions' => (!is_null($manager) ? "`object_manager`='$manager'" : "")));
+			$object_types = ProjectCoTypes::instance()->findAll(array('conditions' => (!is_null($manager) ? "`object_manager`='$manager'" : "")));
 			foreach($object_types as $object_type){
 				$values[] = array('id' => $object_type->getId(), 'name' => $object_type->getName());
 			}*/
@@ -844,11 +890,10 @@ class SearchController extends ApplicationController {
 		return $values;
 	}
         
-        private function get_allowed_columns($object_type) {
+    private function get_allowed_columns($object_type) {
 		$fields = array();
 		if(isset($object_type)){
 			$customProperties = CustomProperties::getAllCustomPropertiesByObjectType($object_type);
-			$objectFields = array();
 			
 			foreach($customProperties as $cp){
 				if ($cp->getType() == 'table') continue;
@@ -856,7 +901,7 @@ class SearchController extends ApplicationController {
 				$fields[] = array('id' => $cp->getId(), 'name' => $cp->getName(), 'type' => $cp->getType(), 'values' => $cp->getValues(), 'multiple' => $cp->getIsMultipleValues());
 			}
 			
-			$ot = ObjectTypes::findById($object_type);
+			$ot = ObjectTypes::instance()->findById($object_type);
 			eval('$managerInstance = ' . $ot->getHandlerClass() . "::instance();");
 			$objectColumns = $managerInstance->getColumns();
 			

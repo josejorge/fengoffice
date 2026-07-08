@@ -26,6 +26,8 @@ abstract class BaseApplicationLogs extends DataManager {
     	'is_silent' => DATA_TYPE_BOOLEAN,
     	'log_data' => DATA_TYPE_STRING,
 		'member_id' => DATA_TYPE_INTEGER,
+    	'full_request' => DATA_TYPE_STRING,
+    	'request_channel' => DATA_TYPE_STRING,
 	);
 
 	/**
@@ -219,7 +221,7 @@ abstract class BaseApplicationLogs extends DataManager {
 	 * @param integer $current_page Current page number
 	 * @return array
 	 */
-	function paginate($arguments = null, $items_per_page = 10, $current_page = 1) {
+	function paginate($arguments = null, $items_per_page = 10, $current_page = 1, $count = null) {
 		if(isset($this) && instance_of($this, 'ApplicationLogs')) {
 			return parent::paginate($arguments, $items_per_page, $current_page);
 		} else {
@@ -234,7 +236,7 @@ abstract class BaseApplicationLogs extends DataManager {
 	 *
 	 * @return ApplicationLogs
 	 */
-	function instance() {
+	static function instance() {
 		static $instance;
 		if(!instance_of($instance, 'ApplicationLogs')) {
 			$instance = new ApplicationLogs();

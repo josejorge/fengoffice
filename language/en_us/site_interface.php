@@ -142,7 +142,7 @@ return array(
 
     'footer copy with homepage' => '&copy; {0} by <a class="internalLink" href="{1}">{2}</a>. All rights reserved.',
     'footer copy without homepage' => '&copy; {0} by {1}. All rights reserved',
-    'footer powered' => 'Powered by <a target="_blank" href="{0}">{1}</a>',
+    'footer powered' => 'Powered by <a target="_blank" href="https://www.parleeconseiller.com/">Parlee Cloud Services</a>',
 
 // Menu
 	'all documents' => 'All documents',
@@ -174,7 +174,8 @@ return array(
   	'contact information' => 'Contact information',
     'first name' => 'First name',
   	'last name' => 'Last name',
-	'surname' => 'Surname',
+	  'surname' => 'Surname',
+    'full name' => 'Full name',
   	'middle name' => 'Middle name',
   	'contact title' => 'Contact title',
   	'work information' => 'Work information',
@@ -301,6 +302,7 @@ return array(
   'after' => 'after',
   'delete mails from server' => 'Delete mails from server',
   'mark as read mails from server' => 'Mark emails as read in the email server when receiving them in Feng Office',
+  'get read state from server' => 'Preserve emails state (read, unread) when receiving them in Feng Office',
   'mail account delete mails from server description' => 'Enable this option in order to delete mails from server after desired time.',
   'show images' => 'Show images.',
   'images are blocked' => 'Images are blocked',
@@ -319,6 +321,7 @@ return array(
 
   'new filename' => 'New filename',
   'new weblink' => 'New link',
+  'add weblink' => 'Add link',
   'add as revision' => 'Add as revision',
   'duplicate filename' => 'Duplicate filename',
   'filename exists' => 'Files with the specified filename already exists. You can select a different filename or choose among the following options',
@@ -431,27 +434,32 @@ return array(
 
   'x ago' => '{0} ago',
 
-  'object time slots' => 'Registered timeslots',
+  'object time slots' => 'Registered time entries',
   'start work' => 'Start clock',
   'end work' => 'Stop clock',
-  'confirm delete timeslot' => 'Are you sure you want to permanently delete this timeslot?',
-  'success open timeslot' => 'Time slot opened successfully',
-  'success create timeslot' => 'Time slot created successfully',
-  'success cancel timeslot' => 'Time slot canceled successfully',
-  'success close timeslot' => 'Time slot closed successfully',
-  'success delete timeslot' => 'Time slot deleted successfully',
-  'success edit timeslot' => 'Time slot edited successfully',
+  'confirm delete timeslot' => 'Are you sure you want to permanently delete this time entry?',
+  'confirm delete all timeslots' => 'Are you sure you want to permanently delete all this time entries?',
+  'success open timeslot' => 'Time entry opened successfully',
+  'success create timeslot' => 'Time entry created successfully',
+  'success cancel timeslot' => 'Time entry canceled successfully',
+  'success close timeslot' => 'Time entry closed successfully',
+  'success delete timeslot' => 'Time entry deleted successfully',
+  'success delete all timeslot' => 'All time entries was deleted successfully',    
+  'success edit timeslot' => 'Time entry edited successfully',
   'open timeslot message' => 'Total work time elapsed: ',
-  'success pause timeslot' => 'Time slot paused successfully',
-  'success resume timeslot' => 'Time slot resumed successfully',
-  'paused timeslot message' => 'Time slot paused, total time: {0}',
+  'success pause timeslot' => 'Time entry paused successfully',
+  'success resume timeslot' => 'Time entry resumed successfully',
+  'paused timeslot message' => 'Time entry paused, total time: {0}',
   'time since pause' => 'Time since pause',
   'pause work' => 'Pause clock',
   'resume work' => 'Resume clock',
   'end work description' => 'End work description',
-  'add timeslot' => 'Add timeslot',
-  'edit timeslot' => 'Edit timeslot',
+  'add timeslot' => 'Add time entry',
+  'new timeslot' => 'New time entry',
+  'edit timeslot' => 'Edit time entry',
   'start date' => 'Start date',
+  'start' => 'Start',
+  'end' => 'End',
   'start time' => 'Start time',
   'end date' => 'End date',
   'end time' => 'End time',
@@ -487,9 +495,11 @@ return array(
   'seconds' => 'Seconds',
   'days' => 'Days',
   'estimated time' => 'Estimated time',
+  'total estimated time' => 'Total estimated time',
   'work in progress' => 'Work in progress',
   'total time' => 'Total time',
-  'total time worked' => 'Total time worked',
+  'total time worked' => 'Worked time',
+  'overall worked time' => 'Total worked time',
     
 
   'upload anyway' => 'Upload anyway',
@@ -501,7 +511,7 @@ return array(
   'statistics' => 'Statistics',
   'time' => 'Time',
   'meeting_time' => 'Time',
-  'task time report' => 'Total task execution time',
+  'task time report' => 'Timesheets',
   'new tasks by user' => 'New tasks by user',
   'generate report' => 'Generate report',
   'task title' => 'Task title',
@@ -515,7 +525,7 @@ return array(
   'last month' => 'Last month',
   'select dates...' => 'Select dates...',
 
-  'task time report description' => 'This report displays the total executed time for a list of tasks, specified by a time period, timeslot type and person (optional).',
+  'task time report description' => 'This report displays the total executed time for a list of tasks, specified by a time period, time entry type and person (optional).',
   'no data to display' => 'No data to display',
 
   'new company name' => 'New company name',
@@ -558,6 +568,7 @@ return array(
   'updated' => 'Updated',
   'group by' => 'Group by',
   'last updated by' => 'Last updated by',
+  'last updated on' => 'Last updated on',
 
   'total' => 'Total',
   'enter tags desc' => 'Enter comma separated tag names...',
@@ -572,7 +583,10 @@ return array(
   'show image in new page' => 'Show image in new page',
   'no tasks to display' => 'There are no tasks to display',
   'do complete' => 'Complete',
-
+   
+  'mark as started this task' => 'Mark as started',
+  'unmark as started this task' => 'Unmark as started',
+    
   'task data' => 'Task data',
   'basic data' => 'Basic data',
   'more details' => 'More details',
@@ -581,12 +595,12 @@ return array(
   'paused time' => 'Paused time',
   'total pause time' => 'Total pause time',
   'pause time cannot be negative' => 'Pause time cannot be negative',
-  'pause time cannot exceed timeslot time' => 'Pause time cannot exceed timeslot time',
-  'timeslots' => 'Timeslots',
+  'pause time cannot exceed timeslot time' => 'Pause time cannot exceed time entry time',
+  'timeslots' => 'Time entries',
 
-  'task timeslots' => 'Task timeslots',
-  'time timeslots' => 'General timeslots',
-  'all timeslots' => 'Task and general timeslots',
+  'task timeslots' => 'Task time entries',
+  'time timeslots' => 'General time entries',
+  'all timeslots' => 'Task and general time entries',
 
   'print report' => 'Print report',
 
@@ -658,11 +672,11 @@ return array(
   'billing category' => 'Billing category',
   'select billing category' => '-- Select billing category --',
   'billing amount' => 'Amount',
-  'hourly billing' => 'Hourly billing',
-  'fixed billing' => 'Fixed billing',
+  'hourly billing' => 'Registered billing rate (hr)',
+  'fixed billing' => 'Total billable',
   'show billing information' => 'Show billing information',
   'no billing categories' => 'There are no billing categories.',
-  'no billing categories desc' => 'If you wish to enable billing support for timeslots and time reports, please add a new billing category.',
+  'no billing categories desc' => 'If you wish to enable billing support for time entries and time reports, please add a new billing category.',
   'billing support is enabled' => 'Billing support is enabled',
   'BillingCategory default_value required' => 'A default hourly rate is required for this billing category',
   'defined in a parent workspace' => 'Defined in a parent workspace',
@@ -722,6 +736,8 @@ return array(
   'add object subtype' => 'Add object subtype',
   'view more' => 'View more',
 
+    
+   'delete all timeslots' => 'Delete all',
 
 
 
@@ -731,7 +747,7 @@ return array(
    'web pages' => 'Web Links',	
 
 
-	'previous tasks' => 'Previous tasks that must be completed before this task',
+	'previous tasks' => 'Previous tasks',
 	'add previous task' => 'Add previous task',
 	'previous tasks must be completed before completion of this task' => 'Previous tasks must be completed before the completion of this task',
 	'task depends on incomplete tasks' => 'This task has previous open tasks',
@@ -768,11 +784,13 @@ return array(
 	'update logo' => 'Update logo',
 	
 	'set manual permissions' => 'Set manual permissions',
-	'set manual permissions desc' => 'If you don\'t set the permissions manually, they will be assinged automatically depending on the user role (Administrators, Managers and Executives will be granted with all permissions).',
+	'set manual permissions desc' => 'If you don\'t set the permissions manually, they will be assigned automatically depending on the user role (Administrators, Managers and Executives will be granted with all permissions).',
 	'or you can also' => 'Or you can also',
 	'template parameters description' => 'This form contains the parameters that are needed to fill the tasks to be generated.',
 	'template_task' => 'Template task',
 	'repeat options' => 'Repeat options',
+	'other properties' => 'Other properties',
+  'time will be rounded to 15 minutes' => 'Time will be rounded to 15 minutes'
 ); // array
 
 ?>

@@ -45,6 +45,22 @@ class Contact extends BaseContact {
 		else return 'contact';
 	}
 	
+	
+	
+	function getObjectName() {
+		//$name = parent::getObjectName();
+        if(user_config_option("listingContactsBy")){
+            $name = $this->getDisplayName();
+        } else {
+            $name = $this->getReverseDisplayName();
+        }
+		
+		Hook::fire('override_contact_name', array('contact' => $this), $name);
+		
+		return $name;
+	}
+	
+	
 	/**
 	 * Array of email accounts
 	 *
@@ -162,14 +178,14 @@ class Contact extends BaseContact {
 		$id = $this->getId();
 		
 		// Check form linked objects
-		$linked_obj_references_count = LinkedObjects::count("`created_by_id` = $id");
+		$linked_obj_references_count = LinkedObjects::instance()->count("`created_by_id` = $id");
 		if ($linked_obj_references_count > 0){
 			return true;
 		}
 			
 		// Check direct references
 		$references = DB::executeAll("SELECT id FROM ".TABLE_PREFIX."objects WHERE `created_by_id` = $id OR `updated_by_id` = $id OR `trashed_by_id` = $id OR `archived_by_id` = $id limit 1");
-		if (count($references) > 0){
+		if (isset($references) && count($references) > 0){
 			return true;
 		}
 		
@@ -189,6 +205,8 @@ class Contact extends BaseContact {
 		if (parent::getUserType() != 0 && !$this->getDisabled()) {
 			if (!$deleteInactive || $this->hasReferences() ) {
 				$this->setDisabled(true);
+				$this->setTokenDisabled($this->getToken());
+				$this->setToken("");
 				$this->save();
 			} else {
 				$this->do_delete();
@@ -258,7 +276,7 @@ class Contact extends BaseContact {
 	 * @return boolean
 	 */
 	function hasImValue() {
-		return ContactImValues::count('`contact_id` = ' . DB::escape ($this->getId()));
+		return ContactImValues::instance()->count('`contact_id` = ' . DB::escape ($this->getId()));
 	} // hasImValue
 	
 
@@ -282,7 +300,7 @@ class Contact extends BaseContact {
 	 * @return string
 	 */
 	function getImValue(ImType $im_type) {
-		$im_value = ContactImValues::findOne(array("conditions" => "`contact_id` = ".$this->getId()." AND `im_type_id` = ".$im_type->getId()));
+		$im_value = ContactImValues::instance()->findOne(array("conditions" => "`contact_id` = ".$this->getId()." AND `im_type_id` = ".$im_type->getId()));
 		return $im_value instanceof ContactImValue && (trim($im_value->getValue()) != '') ? $im_value->getValue() : null;
 	} // getImValue
 	
@@ -338,8 +356,7 @@ class Contact extends BaseContact {
 	 * @return string
 	 */
 	function getDisplayName() {
-		$display = parent::getDisplayName();
-		return trim($display) == '' ? "".$this->getFirstName()." ".$this->getSurname() : $display;
+		return $this->getFirstName()." ".$this->getSurname();
 	} // getDisplayName
 	
 
@@ -367,7 +384,7 @@ class Contact extends BaseContact {
 	 */
 	function getCompany() {
 		if(is_null($this->company)) {
-			$this->company = Contacts::findById($this->getCompanyId());
+			$this->company = Contacts::instance()->findById($this->getCompanyId());
 		}
 		return $this->company;
 	} // getCompany
@@ -453,7 +470,7 @@ class Contact extends BaseContact {
 	 */
 	 function getEmailAddress($type=null) {
 	 	$contact_id = $this->getId();
-	 	$type_condition =  ($type) ? "AND name = '$type'" : "";
+	 	$type_condition =  ($type) ? "AND t.name = '$type'" : "";
 	 	
 	 	$sql = "SELECT * FROM ".TABLE_PREFIX."contact_emails ce
 				LEFT JOIN ".TABLE_PREFIX."email_types t
@@ -462,10 +479,13 @@ class Contact extends BaseContact {
 				AND email_address IS NOT NULL
 				AND contact_id = $contact_id
 				$type_condition order by is_main desc LIMIT 1";
+	 	
+	 	$email_address = null;
 		if ($row = DB::executeOne($sql)) {
-			return $row['email_address'];	
-		}				
-		return null;
+			$email_address = $row['email_address'];
+		}
+		Hook::fire('override_contact_email', array('contact' => $this), $email_address);
+		return $email_address;
 	 } 
 	
 	 	 
@@ -476,11 +496,11 @@ class Contact extends BaseContact {
 	 
 	 
 	 function getNonMainEmails() {
-	 	return ContactEmails::findAll(array('conditions' => 'is_main=0 AND contact_id = '.$this->getId()));
+	 	return ContactEmails::instance()->findAll(array('conditions' => 'is_main=0 AND contact_id = '.$this->getId()));
 	 }
 	 
 	 function getMainEmails() {
-	 	return ContactEmails::findAll(array('conditions' => 'is_main=1 AND contact_id = '.$this->getId()));
+	 	return ContactEmails::instance()->findAll(array('conditions' => 'is_main=1 AND contact_id = '.$this->getId()));
 	 }
 	 
 
@@ -490,12 +510,12 @@ class Contact extends BaseContact {
 	 * @access public
 	 * @param $typeId
 	 * @param $main
-	 * @return ContactTelephone
+	 * @return ContactAddress
      * @author Seba
 	 */
 	function getAddress($type) {
 		$address_type_id = AddressTypes::getAddressTypeId($type);
-		return ContactAddresses::findOne(array('conditions' => array("`contact_id` = ? AND `address_type_id` = ?", $this->getId(), $address_type_id)));
+		return ContactAddresses::instance()->findOne(array('conditions' => array("`contact_id` = ? AND `address_type_id` = ?", $this->getId(), $address_type_id)));
 	} // getMainPhone
 
 	/**
@@ -508,13 +528,16 @@ class Contact extends BaseContact {
 	 */
 	function getStringAddress($type) {
 		$address_type_id = AddressTypes::getAddressTypeId($type);
-		$address = ContactAddresses::findOne(array('conditions' => array("`contact_id` = ? AND `address_type_id` = ?", $this->getId(), $address_type_id)));
+		$address = ContactAddresses::instance()->findOne(array('conditions' => array("`contact_id` = ? AND `address_type_id` = ?", $this->getId(), $address_type_id)));
 
 		if (!$address instanceof ContactAddress) return "";
 
 		$out = $address->getStreet();
 		if($address->getCity() != '') {
 			$out .= ' - ' . $address->getCity();
+		}
+		if($address->getZipCode() != '') {
+			$out .= ' - ' . $address->getZipCode();
 		}
 		if($address->getState() != '') {
 			$out .= ' - ' . $address->getState();
@@ -541,7 +564,7 @@ class Contact extends BaseContact {
 			$is_main_cond = "true";
 		}
 		$telephone_type_id = TelephoneTypes::getTelephoneTypeId($type);
-		return ContactTelephones::findOne(array('conditions' => array("$is_main_cond AND `contact_id` = ? AND 
+		return ContactTelephones::instance()->findOne(array('conditions' => array("$is_main_cond AND `contact_id` = ? AND 
 		`telephone_type_id` = ?", $this->getId(), $telephone_type_id)));
 	} // getFaxPhone	
 	
@@ -550,21 +573,21 @@ class Contact extends BaseContact {
 		if ($type != '') {
 			$type_cond = " AND telephone_type_id = (SELECT id FROM ".TABLE_PREFIX."telephone_types WHERE name='$type')";
 		}
-		return ContactTelephones::findAll(array('conditions' => array("`contact_id` = ? $type_cond" ,$this->getId())));
+		return ContactTelephones::instance()->findAll(array('conditions' => array("`contact_id` = ? $type_cond" ,$this->getId())));
 		
 	} // getAllPhones
 	
 	function getAllEmails() {
-		return ContactEmails::findAll(array('conditions' => array("`contact_id` = ?" ,$this->getId())));
+		return ContactEmails::instance()->findAll(array('conditions' => array("`contact_id` = ?" ,$this->getId())));
 	
 	} // getAllEmails
 	
 	function getAllWebpages() {		
-		return ContactWebpages::findAll(array('conditions' => array("`contact_id` = ?",	$this->getId())));
+		return ContactWebpages::instance()->findAll(array('conditions' => array("`contact_id` = ?",	$this->getId())));
 	} // getAllWebpages
 	
 	function getAllAddresses() {
-		return ContactAddresses::findAll(array('conditions' => array("`contact_id` = ?", $this->getId())));
+		return ContactAddresses::instance()->findAll(array('conditions' => array("`contact_id` = ?", $this->getId())));
 	} // getAllAddress
 	/**
 	 * Return personal fax phone for this contact.
@@ -578,6 +601,12 @@ class Contact extends BaseContact {
 		$telephone = $this->getPhone($type, $is_main, $check_is_main);
 		$number = is_null($telephone)? '' : $telephone->getNumber();
 		return $number;
+	} // getPhoneNumber
+	
+	function getPhoneName($type, $is_main = false, $check_is_main = true) {
+		$telephone = $this->getPhone($type, $is_main, $check_is_main);
+		$name = is_null($telephone)? '' : $telephone->getName();
+		return $name;
 	} // getPhoneNumber
 
 	function getAllImValues() {
@@ -599,7 +628,7 @@ class Contact extends BaseContact {
 	 */
 	function getWebpage($type) {
 		$webpage_type_id = WebpageTypes::getWebpageTypeId($type);
-		return ContactWebpages::findOne(array('conditions' => array("`contact_id` = ? AND `web_type_id` = ?", 
+		return ContactWebpages::instance()->findOne(array('conditions' => array("`contact_id` = ? AND `web_type_id` = ?", 
     		   $this->getId(), $webpage_type_id)));
 	} // getWebpage	
 	
@@ -686,7 +715,7 @@ class Contact extends BaseContact {
 	 * @param string $check_password
 	 * @return boolean
 	 */	
-    function isValidPasswordLdap($user, $password, $config) {
+    static function isValidPasswordLdap($user, $password, $config) {
 
                 // Connecting using the configuration:
                 require_once "Net/LDAP2.php";
@@ -724,11 +753,11 @@ class Contact extends BaseContact {
     *@param api hash code
     @return boolean have access to api.
     */
-    private function  getApiAccess()
+    /*private function  getApiAccess()
     {
         return $this->getToken() == $api_token;
     }
-	
+	*/
 
 	/**
 	 * Check if $twisted_token is valid for this user account
@@ -748,7 +777,7 @@ class Contact extends BaseContact {
 	 * @return array
 	 */
 	function getContactsByCompany() {
-		return Contacts::findAll(array(
+		return Contacts::instance()->findAll(array(
 			'conditions' => '`company_id` = ' . $this->getId(). ' AND `user_type` = 0 AND `disabled` = 0 AND trashed_by_id=0', 
 			'order' => '`first_name` ASC, `surname` ASC'
 		)); // findAll
@@ -763,7 +792,7 @@ class Contact extends BaseContact {
 	 */
 	function getUsersByCompany() {
 		if ($this->company_users == null) {
-			$this->company_users = Contacts::findAll(array('conditions' => '`user_type` <> 0 AND `company_id` = ' . $this->getId(), 'order' => '`first_name` ASC, `surname` ASC'));
+			$this->company_users = Contacts::instance()->findAll(array('conditions' => '`user_type` <> 0 AND `company_id` = ' . $this->getId(), 'order' => '`first_name` ASC, `surname` ASC'));
 		}
 		return $this->company_users;
 	} // getContactsByCompany
@@ -858,7 +887,7 @@ class Contact extends BaseContact {
 	 * @param void
 	 * @return string
 	 */
-	function getAddUrl() {
+	 function getAddUrl() {
 		return get_url ( 'contact', 'add' );
 	} // getAddUrl
 	
@@ -931,7 +960,7 @@ class Contact extends BaseContact {
 	 * @param array $errors
 	 * @return void
 	 */
-	function validate(&$errors) {
+	function validate($errors) {
 		
 		if ($this->getIsCompany()){
 			
@@ -945,20 +974,22 @@ class Contact extends BaseContact {
 				$errors[] = lang('company name required');
 			} 
 
-			// Esta mal porque ya nbo estan en el modelo... hay que validarlo en el submit del controller.. 
-			/*if($this->validatePresenceOf('homepage')) {
-				$page = trim($this->getHomepage());
-				if (substr_utf($page, 0,7) != "http://" && substr_utf($page, 0,8) != "https://") {
-					$this->setHomepage("http://" . $page);
-				}
-				if(!is_valid_url($this->getHomepage())) {
-					$errors[] = lang('company homepage invalid');
-				} // if
-			} // if*/
 		}
 		else{
 			$fields = array();
-			// Validate username if present
+			
+			// Only for users: Validate if username is present
+			if ($this->getUserType() > 0 && !$this->validatePresenceOf('username')) {
+				$errors[] = lang('username value required');
+				$fields[] = 'username';
+			}
+			// Only for users: Validate uniqueness of username
+			if ($this->getUserType() > 0 && !$this->validateUniquenessOf('username')) {
+				$errors[] = lang('username must be unique');
+				$fields[] = 'username';
+			}
+			
+			// check existance of firstname or surname
 			if(!$this->validatePresenceOf('surname') && !$this->validatePresenceOf('first_name')) {
 				$errors[] = lang('contact identifier required');
 				$fields[] = 'first_name';
@@ -968,25 +999,34 @@ class Contact extends BaseContact {
 	
 			if (!in_array('email', $this->skip_validations)) {
 				//if email address is entered, it must be unique
-				$user = array_var(array_var($_POST, 'contact'),'user');
-				$main_email = trim(array_var(array_var($_POST, 'contact'),'email'));
+				$contact_data = array_var($_POST, 'contact');
+				$user = array_var($contact_data,'user');
+				$main_email = trim(array_var($contact_data,'email'));
 				if($main_email || array_var($user, 'create-user')) {
 					if(!preg_match(EMAIL_FORMAT, $main_email)) {
 						$errors[] = lang('invalid email address');
 						$fields[] = 'email';
 					}
 					
-					$conditions = "email_address=".DB::escape($main_email);
-					if (!$this->isNew()) {
+					$do_validate_unique_mail = true;
+					Hook::fire('validate_contact_unique_mail', $this, $do_validate_unique_mail);
+					
+					if ($do_validate_unique_mail) {
+						$conditions = "email_address=".DB::escape($main_email);
+						$type_condition = "";
 						if (!config_option('check_unique_mail_contact_comp')) {
 							$type_condition = " AND (SELECT c.is_company FROM ".TABLE_PREFIX."contacts c WHERE c.object_id=contact_id)=0";
 						}
-						$conditions .= " AND contact_id <> ".$this->getId() . $type_condition;
-					}
-					$em = ContactEmails::instance()->findOne(array('conditions' => $conditions));
-					if($em instanceof ContactEmail) {
-						$errors[] = lang('email address must be unique');
-						$fields[] = 'email';
+						if (!$this->isNew()) {
+							$conditions .= " AND contact_id <> ".$this->getId();
+						}
+						$conditions .= $type_condition;
+						
+						$em = ContactEmails::instance()->findOne(array('conditions' => $conditions));
+						if($em instanceof ContactEmail) {
+							$errors[] = lang('email address must be unique');
+							$fields[] = 'email';
+						}
 					}
 				}
 			}
@@ -1065,13 +1105,26 @@ class Contact extends BaseContact {
 	 * @return boolean
 	 */
 	function canView(Contact $user) {
+		
+		$return_false = false;
+		Hook::fire('contact_can_view', $this, $return_false);
+		if ($return_false) return false;
+		
 		if ( $this->isOwnerCompany()) return true;
-		if ( $this->getId() == logged_user()->getId() ) return true ;
+		if (logged_user() instanceof Contact && $this->getId() == logged_user()->getId() ) return true ;
+		if ($this->isUser()) {
+			// a contact that has a user assigned to it can be modified by anybody that can manage security (this is: users and permissions) or the user himself.
+			if($this->getCompanyId() ==  $user->getCompanyId()){
+				return true;
+			}
+			return ($this->getUserType() > $user->getUserType() || $user->isAdministrator());
+		}
+		 
 		return can_read($user, $this->getMembers(), $this->getObjectTypeId());
 	} // canView
 	
 	
-	function canAdd(Contact $user, $context, &$notAllowedMember = ''){
+	static function canAdd(Contact $user, $context, &$notAllowedMember = ''){
 		return can_manage_contacts($user) || can_add($user, $context, Contacts::instance()->getObjectTypeId(), $notAllowedMember);
 	}
 
@@ -1080,9 +1133,9 @@ class Contact extends BaseContact {
 	 *
 	 * @access public
 	 * @param Contact $user
-	 * @return booelean
+	 * @return boolean
 	 */
-	function canAddUser(Contact $user) {
+	static function canAddUser(Contact $user) {
 		return can_manage_security($user);
 	}
 	
@@ -1115,8 +1168,12 @@ class Contact extends BaseContact {
 	 */
 	function canEdit(Contact $user) {
 		if ($this->isUser()) {
-			// a contact that has a user assigned to it can be modified by anybody that can manage security (this is: users and permissions) or the user himself.
-			return can_manage_security ($user) && $this->getUserType() > $user->getUserType() || $this->getObjectId () == $user->getObjectId ();
+		
+			$return_false = false;
+			Hook::fire('contact_can_edit', $this, $return_false);
+			if ($return_false) return false;
+			// a contact that has a user assigned to it can be modified by anybody that can manage security (this is: users and permissions) or the user himself. admin can edit admin
+			return can_manage_security($user) && ($this->getUserType() > $user->getUserType() || $user->isAdministrator() || $this->isAdminGroup() && $user->isAdminGroup() && $this->getUserType() >= $user->getUserType() ) || $this->getObjectId() == $user->getObjectId();
 		} 
 		if ($this->isOwnerCompany()) return can_manage_configuration($user);
 		return can_manage_contacts($user) || can_write ($user, $this->getMembers(), $this->getObjectTypeId());
@@ -1212,7 +1269,7 @@ class Contact extends BaseContact {
 		
 		$deletedOn = $this->getTrashedOn () instanceof DateTimeValue ? ($this->getTrashedOn ()->isToday () ? format_time ( $this->getTrashedOn () ) : format_datetime ( $this->getTrashedOn (), 'M j' )) : lang ( 'n/a' );
 		if ($this->getTrashedById () > 0)
-			$deletedBy = Contacts::findById ( $this->getTrashedById () );
+			$deletedBy = Contacts::instance()->findById( $this->getTrashedById () );
 		if (isset ( $deletedBy ) && $deletedBy instanceof Contact) {
 			$deletedBy = $deletedBy->getObjectName ();
 		} else {
@@ -1221,13 +1278,13 @@ class Contact extends BaseContact {
 		
 		$archivedOn = $this->getArchivedOn () instanceof DateTimeValue ? ($this->getArchivedOn ()->isToday () ? format_time ( $this->getArchivedOn () ) : format_datetime ( $this->getArchivedOn (), 'M j' )) : lang ( 'n/a' );
 		if ($this->getArchivedById () > 0)
-			$archivedBy = Contacts::findById ( $this->getArchivedById () );
+			$archivedBy = Contacts::instance()->findById( $this->getArchivedById () );
 		if (isset ( $archivedBy ) && $archivedBy instanceof Contact) {
 			$archivedBy = $archivedBy->getObjectName ();
 		} else {
 			$archivedBy = lang ( "n/a" );
 		}
-		return array ("id" => $this->getObjectTypeName () . $this->getId (), "object_id" => $this->getId (), "ot_id" => $this->getObjectTypeId (), "name" => $this->getObjectName (), "type" => $this->getObjectTypeName (), "tags" => project_object_tags ( $this ), "createdBy" => $this->getCreatedByDisplayName (), // Users::findById($this->getCreatedBy())->getUsername(),
+		return array ("id" => $this->getObjectTypeName () . $this->getId (), "object_id" => $this->getId (), "ot_id" => $this->getObjectTypeId (), "name" => $this->getObjectName (), "type" => $this->getObjectTypeName (), "tags" => project_object_tags ( $this ), "createdBy" => $this->getCreatedByDisplayName (), // Users::instance()->findById($this->getCreatedBy())->getUsername(),
 "createdById" => $this->getCreatedById (), "dateCreated" => $this->getObjectCreationTime () instanceof DateTimeValue ? ($this->getObjectCreationTime ()->isToday () ? format_time ( $this->getObjectCreationTime () ) : format_datetime ( $this->getObjectCreationTime () )) : lang ( 'n/a' ), "updatedBy" => $updated_by_name, "updatedById" => $updated_by_id, "dateUpdated" => $updated_on, "wsIds" => $wsIds, "url" => $this->getObjectUrl (), "manager" => get_class ( $this->manager () ), "deletedById" => $this->getTrashedById (), "deletedBy" => $deletedBy, "dateDeleted" => $deletedOn, "archivedById" => $this->getArchivedById (), "archivedBy" => $archivedBy, "dateArchived" => $archivedOn );
 	}
 	
@@ -1263,14 +1320,26 @@ class Contact extends BaseContact {
      * @param boolean $isMain
      * @author pepe
      */
-    function addEmail($value, $email_type, $isMain = false) {
+    function addEmail($value, $email_type, $isMain = false, $isMainbilling = false) {
+
     	$value=trim($value);
     	$email = new ContactEmail() ;
     	$email->setEmailTypeId(EmailTypes::getEmailTypeId($email_type));
     	$email->setEmailAddress($value);
     	$email->setContactId($this->getId());
     	$email->setIsMain($isMain);
+		$email->setDefaultEmail($isMainbilling);
     	$email->save();
+    }
+    
+    function hasEmail($value, $email_type, $isMain = false) {
+    	$type_id = EmailTypes::getEmailTypeId($email_type);
+    	$obj = ContactEmails::instance()->findOne(array('conditions' => array(
+    			'contact_id=? AND email_type_id=? AND email_address=?',
+    			$this->getId(), $type_id, $value
+    	)));
+    	 
+    	return $obj instanceof ContactEmail;
     }
     
     
@@ -1299,6 +1368,16 @@ class Contact extends BaseContact {
     	$address->save();
     }
     
+    function hasAddress($street, $city, $state, $country, $zipCode, $address_type, $isMain = false) {
+    	$type_id = AddressTypes::getAddressTypeId($address_type);
+    	$obj = ContactAddresses::instance()->findOne(array('conditions' => array(
+    			'contact_id=? AND address_type_id=? AND street=? AND city=? AND state=? AND zip_code=? AND country=?',
+    			$this->getId(), $type_id, $street, $city, $state, $zipCode, $country
+    	)));
+    	
+    	return $obj instanceof ContactAddress;
+    }
+    
     
 	/**
      * 
@@ -1318,6 +1397,16 @@ class Contact extends BaseContact {
     	$phone->save();
     }
     
+    function hasPhone($number, $phone_type, $isMain = false, $name = "") {
+    	$type_id = TelephoneTypes::getTelephoneTypeId($phone_type);
+    	$obj = ContactTelephones::instance()->findOne(array('conditions' => array(
+    			'contact_id=? AND telephone_type_id=? AND number=?',
+    			$this->getId(), $type_id, $number
+    	)));
+    	 
+    	return $obj instanceof ContactTelephone;
+    }
+    
     
 	/**
      * 
@@ -1334,6 +1423,16 @@ class Contact extends BaseContact {
     	$web->save();
     }
     
+    function hasWebpage($url, $web_type) {
+    	$type_id = WebpageTypes::getWebpageTypeId($web_type);
+    	$obj = ContactWebpages::instance()->findOne(array('conditions' => array(
+    			'contact_id=? AND web_type_id=? AND url=?',
+    			$this->getId(), $type_id, $url
+    	)));
+    	 
+    	return $obj instanceof ContactWebpage;
+    }
+    
     
     private static $pg_cache = array();
     
@@ -1345,7 +1444,7 @@ class Contact extends BaseContact {
     	$type = parent::getUserType();
     	if (!$type) return false;
     	if (!array_var(self::$pg_cache, $type)) {
-    		$pg = PermissionGroups::findById($type);
+    		$pg = PermissionGroups::instance()->findById($type);
     		self::$pg_cache[$type] = $pg;
     	} else {
     		$pg = array_var(self::$pg_cache, $type);
@@ -1358,7 +1457,7 @@ class Contact extends BaseContact {
     	$type = $this->getUserType();
     	if (!$type) return false;
     	if (!array_var(self::$pg_cache, $type)) {
-    		$pg = PermissionGroups::findById($type);
+    		$pg = PermissionGroups::instance()->findById($type);
     		self::$pg_cache[$type] = $pg;
     	} else {
     		$pg = array_var(self::$pg_cache, $type);
@@ -1371,7 +1470,7 @@ class Contact extends BaseContact {
     	$type = $this->getUserType();
     	if (!$type) return false;
     	if (!array_var(self::$pg_cache, $type)) {
-    		$pg = PermissionGroups::findById($type);
+    		$pg = PermissionGroups::instance()->findById($type);
     		self::$pg_cache[$type] = $pg;
     	} else {
     		$pg = array_var(self::$pg_cache, $type);
@@ -1384,7 +1483,7 @@ class Contact extends BaseContact {
     	$type = $this->getUserType();
     	if (!$type) return false;
     	if (!array_var(self::$pg_cache, $type)) {
-    		$pg = PermissionGroups::findById($type);
+    		$pg = PermissionGroups::instance()->findById($type);
     		self::$pg_cache[$type] = $pg;
     	} else {
     		$pg = array_var(self::$pg_cache, $type);
@@ -1409,7 +1508,7 @@ class Contact extends BaseContact {
     	$type = $this->getUserType();
     	if (!$type) return null;
     	if (!array_var(self::$pg_cache, $type)) {
-    		$pg = PermissionGroups::findById($type);
+    		$pg = PermissionGroups::instance()->findById($type);
     		self::$pg_cache[$type] = $pg;
     	} else {
     		$pg = array_var(self::$pg_cache, $type);
@@ -1426,7 +1525,7 @@ class Contact extends BaseContact {
     function hasEmailAccounts() {
     	$mail_plugin_enabled = Plugins::instance()->isActivePlugin('mail');
     	if ($mail_plugin_enabled) {
-	    	$accounts = MailAccountContacts::find(array('conditions' => '`contact_id` = '.$this->getId()));
+	    	$accounts = MailAccountContacts::instance()->find(array('conditions' => '`contact_id` = '.$this->getId()));
 	    	return is_array($accounts) && count($accounts) > 0;
     	}
     }    
@@ -1438,27 +1537,95 @@ class Contact extends BaseContact {
     
     
     function getArrayInfo() {
-    	$info = array('id' => $this->getId(), 'name' => $this->getObjectName(), 'cid' => $this->getCompanyId(), 'img_url' => $this->getPictureUrl(), 'role' => $this->getUserType());
-    	if ($this->getId() == logged_user()->getId()) $info['isCurrent'] = 1;
-    	return $info;
+        $name = $this->getObjectName();
+        if(user_config_option("listingContactsBy")){
+            $name = $this->getDisplayName();
+        } else {
+            $name = $this->getReverseDisplayName();
+        }
+        $info = array(
+            'id' => $this->getId(),
+            'name' => $name,
+            'cid' => $this->getCompanyId(),
+            'img_url' => $this->getPictureUrl(),
+            'role' => $this->getUserType(),
+            'address'=>array_map(function($value){return $value->getArrayInfo();},$this->getAllAddresses()),
+            'email'=>array_map(function($value){return $value->getArrayInfo();},$this->getAllEmails()),
+            'phone'=>array_map(function($value){return $value->getArrayInfo();},$this->getAllPhones())
+        );
+        if ($this->getId() == logged_user()->getId()) $info['isCurrent'] = 1;
+        return $info;
     }
     
     
     /**
-	 * Return path to the picture file. This function just generates the path, does not check if file really exists
-	 *
-	 * @access public
-	 * @param void
-	 * @return string
-	 */
-	function getPicturePath() {
-		return PublicFiles::getFilePath($this->getPictureFile());
-	} // getPicturePath
+     * Return path to the picture file. This function just generates the path, does not check if file really exists
+     *
+     * @access public
+     * @param void
+     * @return string
+     */
+    function getPicturePath($size = 'small') {
+    	switch ($size) {
+    		case 'small':
+    			if (FileRepository::isInRepository($this->getPictureFileSmall())) {
+    				return PublicFiles::getFilePath($this->getPictureFileSmall());
+    			}
+    		case 'medium':
+    			if (FileRepository::isInRepository($this->getPictureFileMedium())) {
+    				return PublicFiles::getFilePath($this->getPictureFileMedium());
+    			}
+    		case 'large':
+    			if (FileRepository::isInRepository($this->getPictureFile())) {
+    				return PublicFiles::getFilePath($this->getPictureFile());
+    			}
+    	}
+    }
+    
+    
+    /**
+     * Return path to the picture file. This function just generates the path, does not check if file really exists
+     *
+     * @access public
+     * @param void
+     * @return string
+     */
+    function getPictureFileContent($size = 'small') {
+    	switch ($size) {
+    		case 'small':
+    			if (FileRepository::isInRepository($this->getPictureFileSmall())) {
+    				return FileRepository::getFileContent($this->getPictureFileSmall());
+    			}
+    		case 'medium':
+    			if (FileRepository::isInRepository($this->getPictureFileMedium())) {
+    				return FileRepository::getFileContent($this->getPictureFileMedium());
+    			}
+    		case 'large':
+    			if (FileRepository::isInRepository($this->getPictureFile())) {
+    				return FileRepository::getFileContent($this->getPictureFile());
+    			}
+    	}
+    }// getPicturePath
     
 	
-    function getPictureUrl() {
-		return ($this->getPictureFile() != '' ? get_url('files', 'get_public_file', array('id' => $this->getPictureFile())): get_image_url('default-avatar.png'));
-	}
+    function getPictureUrl($size = 'small') {
+
+		$default_img_file = null; Hook::fire('default_image_file', $this, $default_img_file);
+    	
+    	$url = null; Hook::fire('override_contact_picture_url', $this, $url);
+    	if ($url != null) return $url;
+    	
+		if($default_img_file==null) $default_img_file = "default-avatar.png";
+
+    	switch ($size) {
+    		case 'small':
+    			return ($this->getPictureFileSmall() != '' ? get_url('files', 'get_public_file', array('id' => $this->getPictureFileSmall())): get_image_url($default_img_file));
+    		case 'medium':
+    			return ($this->getPictureFileMedium() != '' ? get_url('files', 'get_public_file', array('id' => $this->getPictureFileMedium())): get_image_url($default_img_file));
+    		case 'large':
+    			return ($this->getPictureFile() != '' ? get_url('files', 'get_public_file', array('id' => $this->getPictureFile())): get_image_url($default_img_file));
+    	}
+	} // getPictureUrl
 	
 	
 	/**
@@ -1489,23 +1656,120 @@ class Contact extends BaseContact {
 		} else {
 			$public_fileId = FileRepository::addFile($source, array('type' => 'image/png', 'public' => true));
 		}
-
-		if($public_fileId) {
-			$this->setPictureFile($public_fileId);
-			if($save) {
-				$this->save();
-			}
-		}
+		
+		$this->generateAllSizePictures($public_fileId, $save);
+		
 		$result = true;
 
 		// Cleanup
 		if(!$result && $public_fileId) {
 			FileRepository::deleteFile($public_fileId);
 		}
-		@unlink($temp_file);
+		if (file_exists($temp_file)) {
+			@unlink($temp_file);
+		}
 
 		return $public_fileId;
 	} // setPicture
+	
+	
+	function generateAllSizePictures($repository_id, $save = true) {
+		try {
+			if (!FileRepository::isInRepository($repository_id)) {
+				return;
+			}
+			
+			$result = array();
+			
+			$temp_file_name = CACHE_DIR . "/contact-" . $this->getId() . "_" . gen_id() . ".png";
+			
+			$content = FileRepository::getFileContent($repository_id);
+			file_put_contents($temp_file_name, $content);
+			
+			// generate large image
+			$rep_id = $this->generatePictureFile($temp_file_name, 600, str_replace('.png', '-large.png', $temp_file_name));
+			if (is_null($rep_id)) {
+				$rep_id = $repository_id;
+			}
+			$result['large'] = $rep_id;
+			
+			// generate medium image
+			$rep_id = $this->generatePictureFile($temp_file_name, 200, str_replace('.png', '-medium.png', $temp_file_name));
+			if (is_null($rep_id)) {
+				$rep_id = $repository_id;
+			}
+			$result['medium'] = $rep_id;
+			
+			// generate small image
+			$rep_id = $this->generatePictureFile($temp_file_name, 60, str_replace('.png', '-small.png', $temp_file_name));
+			if (is_null($rep_id)) {
+				$rep_id = $repository_id;
+			}
+			$result['small'] = $rep_id;
+			
+			$this->setPictureFile($result['large']);
+			$this->setPictureFileMedium($result['medium']);
+			$this->setPictureFileSmall($result['small']);
+			if ($save) {
+				$this->save();
+			}
+			
+			@unlink($temp_file_name);
+			
+			return $result;
+			
+		} catch (Exception $e) {
+			Logger::log_r("Error in Contact::generateAllSizePictures('$repository_id'): ".$e->getMessage());
+			Logger::log_r($e->getTraceAsString());
+		}
+	}
+	
+	private function generatePictureFile($source_file, $max_size, $tmp_filename = "") {
+		if (!$tmp_filename) {
+			$tmp_filename = CACHE_DIR . "/" . gen_id() . ".png";
+		}
+		if (!is_file($source_file)) {
+			return null;
+		}
+		if (!$max_size) {
+			$max_size = 600;
+		}
+		Env::useLibrary('simplegd');
+		$image = new SimpleGdImage($source_file);
+		
+		if ($image->getWidth() > $max_size || $image->getHeight() > $max_size) {
+				
+			if ($image->getWidth() > $image->getHeight()) {
+				$w = $max_size;
+				$ratio = $image->getHeight() / $image->getWidth();
+				$h = $ratio * $w;
+			} else {
+				$h = $max_size;
+				$ratio = $image->getWidth() / $image->getHeight();
+				$w = $ratio * $h;
+			}
+			
+			$data = file_get_contents($source_file);
+			$vImg = imagecreatefromstring($data);
+			$dstImg = imagecreatetruecolor($w, $h);
+			// save transparency
+			imagealphablending($dstImg, FALSE);
+			imagesavealpha($dstImg, TRUE);
+			
+			imagecopyresampled($dstImg, $vImg, 0, 0, 0, 0, $w, $h, $image->getWidth(), $image->getHeight());
+			imagepng($dstImg, $tmp_filename);
+			imagedestroy($dstImg);
+			
+			$repo_id = FileRepository::addFile($tmp_filename, array('type' => 'image/png', 'public' => true));
+			
+			@unlink($tmp_filename);
+			
+			return $repo_id;
+				
+		} else {
+			return null;
+		}
+	}
 	
 	
 	/**
@@ -1517,7 +1781,11 @@ class Contact extends BaseContact {
 	function deletePicture() {
 		if($this->hasPicture()) {
 			FileRepository::deleteFile($this->getPictureFile());
+			FileRepository::deleteFile($this->getPictureFileMedium());
+			FileRepository::deleteFile($this->getPictureFileSmall());
 			$this->setPictureFile('');
+			$this->setPictureFileMedium('');
+			$this->setPictureFileSmall('');
 		} // if
 	} // deletePicture
 	
@@ -1585,6 +1853,23 @@ class Contact extends BaseContact {
 	
 	
 	/**
+	 * Check if specific $user can change $this user's external tokens
+	 *
+	 * @param Contact $user
+	 * @return boolean
+	 */
+	function canChangeExternalToken(Contact $user) {
+	    if(can_manage_security($user)) {
+	        // Only managers, admins and super admins can change lower roles passwords, Super admins can change all passwords
+	        if ($user->isAdminGroup() || $user->isManager()) {
+	            return $user->isAdministrator() || $this->getUserType() > $user->getUserType();
+	        }
+	    }
+	    return false;
+	}
+	
+	
+	/**
 	 * Check if this user can update this users permissions
 	 *
 	 * @param Contact $user
@@ -1599,8 +1884,9 @@ class Contact extends BaseContact {
 		$this_user_type = array_var(self::$pg_cache, $this->getUserType());
 		if (!$this_user_type)
 			$this_user_type = PermissionGroups::instance()->findOne(array("conditions" => "id = ".$this->getUserType()));
-		
-		$can_change_type = $actual_user_type->getId() < $this_user_type->getId() || $user->isAdminGroup() && $this->getId() == $user->getId() || $user->isAdministrator();
+
+		//if current user type < user type OR current user is admin and user is admin OR current user is superadmin
+		$can_change_type = $actual_user_type->getId() < $this_user_type->getId() || $user->isAdminGroup() && $this->isAdminGroup() && $actual_user_type->getId() <= $this_user_type->getId()  || $user->isAdministrator();
 		
 		return can_manage_security($user) && $can_change_type;
 	} // canUpdatePermissions
@@ -1664,7 +1950,25 @@ class Contact extends BaseContact {
 		} // if
 
 		return get_url('account', 'update_permissions', $attributes);*/
-	} // getUpdatePermissionsUrl	
+	} // getUpdatePermissionsUrl
+
+	
+	function getEditExternalTokensUrl($redirect_to = null) {
+	    $attributes = array('user_id' => $this->getId());
+	    if(trim($redirect_to) != "") {
+	        $attributes['redirect_to'] = str_replace('&amp;', '&', trim($redirect_to));
+	    } // if
+	    return get_url('account', 'edit_external_tokens', $attributes);
+	} // getEditExternalTokensUrl
+	
+	
+	function getDeleteExternalTokensUrl($redirect_to = null) {
+	    $attributes = array('id' => $this->getId());
+	    if(trim($redirect_to) != "") {
+	        $attributes['redirect_to'] = str_replace('&amp;', '&', trim($redirect_to));
+	    } // if
+	    return get_url('account', 'delete_external_token', $attributes);
+	} // getDeleteExternalTokensUrl
 	
 	
 	function setUserType($type){
@@ -1683,7 +1987,7 @@ class Contact extends BaseContact {
 	 * be part of the company and have is_admin stamp set to true
 	 *
 	 * @access public
-	 * @param Company $company
+	 * @param Contact $company
 	 * @return boolean
 	 */
 	function isCompanyAdmin(Contact $company) {
@@ -1698,8 +2002,8 @@ class Contact extends BaseContact {
 	 * @param void
 	 * @return array
 	 */
-	function getClientCompanies() {
-		return Contacts::findAll(array('conditions' => '`object_id` <> 1 AND `is_company` = 1'));
+	static function getClientCompanies() {
+		return Contacts::instance()->findAll(array('conditions' => '`object_id` <> 1 AND `is_company` = 1'));
 	} // getClientCompanies
 	
 
@@ -1723,7 +2027,7 @@ class Contact extends BaseContact {
 	 * @return integer
 	 */
 	function countUsers() {
-		return Contacts::count('`company_id` = ' . DB::escape($this->getId()));
+		return Contacts::instance()->count('`company_id` = ' . DB::escape($this->getId()));
 	} // countUsers
 	
 	/**
@@ -1823,5 +2127,140 @@ class Contact extends BaseContact {
 			$this->pg_ids_cache = array_flat(DB::executeAll("SELECT permission_group_id FROM ".TABLE_PREFIX."contact_permission_groups WHERE contact_id = '".$this->getId()."'"));
 		}
 		return $this->pg_ids_cache;
+	}
+	
+	
+	
+	
+	// override job title attribute getter and setter
+	function getJobTitle() {
+		$cp = CustomProperties::instance()->findOne(array('conditions' => "code='job_title' AND object_type_id=".$this->manager()->getObjectTypeId()));
+		if ($cp instanceof CustomProperty) {
+			if ($cp->getIsDisabled()) {
+				return "";
+			}
+			$cp_val = CustomPropertyValues::getCustomPropertyValue($this->getId(), $cp->getId());
+			if ($cp_val instanceof CustomPropertyValue) {
+				return $cp_val->getValue();
+			} else {
+				return "";
+			}
+		} else {
+			return $this->getColumnValue('job_title');
+		}
+	}
+	
+	function setJobTitle($value) {
+		$cp = CustomProperties::instance()->findOne(array('conditions' => "code='job_title' AND object_type_id=".$this->manager()->getObjectTypeId()));
+		if ($cp instanceof CustomProperty) {
+			$cp_val = CustomPropertyValues::getCustomPropertyValue($this->getId(), $cp->getId());
+			if (!$cp_val instanceof CustomPropertyValue) {
+				$cp_val = new CustomPropertyValue();
+				$cp_val->setObjectId($this->getId());
+				$cp_val->setCustomPropertyId($cp->getId());
+			}
+			$cp_val->setValue($value);
+			$cp_val->save();
+			return true;
+			
+		} else {
+			return $this->setColumnValue('job_title', $value);
+		}
+	}
+	
+
+
+
+	function getUserTimezoneValue() {
+		return Timezones::getTimezoneOffset($this->getUserTimezoneId());
+	}
+	
+	function getUserTimezoneHoursOffset() {
+		$offset_seconds = Timezones::getTimezoneOffset($this->getUserTimezoneId());
+		$offset_hours = $offset_seconds / 3600;
+	
+		return $offset_hours;
+	}
+	
+	/**
+	 * Method overriden from BaseContact to calculate the timezone using 
+	 * the timezones table and not reading the attribute "timezone" of the contact
+	 */
+	function getTimezone() {
+		$offset_hours = $this->getUserTimezoneHoursOffset();
+		return $offset_hours;
+	}
+	
+	
+	
+	function getFixedColumnValue($column_name, $raw_data=false) {
+		$value = null;
+		switch ($column_name) {
+			case 'email':
+				$value = ContactEmails::instance()->findAll(array("conditions" => array("contact_id=?",$this->getId())));
+				break;
+			case 'phone':
+				$value = ContactTelephones::instance()->findAll(array("conditions" => array("contact_id=?",$this->getId())));
+				break;
+			case 'address':
+				$value = ContactAddresses::instance()->findAll(array("conditions" => array("contact_id=?",$this->getId())));
+				break;
+			case 'webpage':
+				$value = ContactWebpages::instance()->findAll(array("conditions" => array("contact_id=?",$this->getId())));
+				break;
+			case 'company_id':
+				if ($raw_data) {
+					$value = $this->getCompanyId();
+				} else {
+					if ($this->getCompanyId() > 0) {
+						$comp = $this->getCompany();
+						if ($comp instanceof Contact) $value = $comp->getObjectName();
+					}
+				}
+				break;
+			case 'picture_file':
+				if ($this->getPictureFile() != '') {
+					$value = $this->getPictureUrl();
+				}
+				break;
+			default:
+				$value = $this->getColumnValue($column_name);
+		}
+		return $value;
+	}
+
+	function getBillingEmail() {
+		$value = ContactEmails::instance()->findOne(array("conditions" => "contact_id = ".$this->getId()." AND is_main = 1"));
+		if(empty($value)) return false;
+		return ($value->getColumnValue('default_billing_email') != '') ? $value->getColumnValue('default_billing_email') : 0;
+	}
+
+	
+
+	function getAllPhonesString() {
+		$all_phones = $this->getAllPhones();
+		$phone_numbers = array();
+		foreach ($all_phones as $phone) {
+			$phone_numbers[] = $phone->getNumber();
+		}
+		return implode(" - ", $phone_numbers);
+	}
+
+	function getAllAddressesString() {
+		$addresses = array();
+		$all_addresses = $this->getAllAddresses();
+		foreach ($all_addresses as $address) {
+			$addresses[] = $address->toString();
+		}
+		return implode("\n", $addresses);
+	}
+
+	function getAllEmailsString() {
+		$emails = array();
+		$all_emails = $this->getAllEmails();
+		foreach ($all_emails as $email) {
+			$emails[] = $email->getEmailAddress();
+		}
+		return implode(" - ", $emails);
 	}
 }

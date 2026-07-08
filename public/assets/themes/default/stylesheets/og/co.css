@@ -771,18 +771,30 @@
 	white-space:nowrap;
 	width:1%;
 }
+.og-custom-properties .table-cp td {
+	padding: 2px 4px;
+}
 .og-add-custom-properties th {
-	width: 200px;
-	text-align: center;
+	padding-left: 4px;
 	font-weight: bold;
+	min-width: 100px;
 }
 .og-add-custom-properties th.actions {
-	width: 16px;
-	background: none;
+	width: 20px;
+	min-width: 20px;
 }
 .og-add-custom-properties input {
 	width: 200px;
 }
+
+.task-data div.og-add-custom-properties table td input.name,
+.task-data div.og-add-custom-properties table td input.value {
+	width: 115px;
+}
+.task-data div.og-add-custom-properties table {
+	width: 260px;
+}
+
 
 .og-custom-properties .row {
 	background-color:white;	
@@ -798,6 +810,15 @@
 
 .member-path-dim-block {
 	margin: 4px 0;
+}
+
+.object-view-member-path-container .member-path-dim-block {
+	heigth: 25px;
+}
+.object-view-member-path-container .member-path-dim-block .dname {
+	padding-top: 0;
+	width: 200px;
+	margin-top: 3px;
 }
 
 .member-path-dim-block .dname {
@@ -821,7 +842,7 @@
 }
 .wysiwyg-description ul{
 	padding-left: 25px;
-	list-style: inherit !important;
+	list-style: disc !important;
 }
 
 .wysiwyg-description ol{
@@ -870,8 +891,54 @@
 	background-image: url(../../images/48x48/objective.png);
 }
 .og-add-custom-properties {
-	margin: 12px 0;
+	margin: 0 0 12px;
+	float: left;
 }
 .event .og-add-custom-properties {
 	margin-left: 200px;
+}
+
+.history .pagination {
+	margin: 10px 0 0;
+	padding: 10px 5px 0;
+	border-top: 1px solid #ccc;
+}
+.history .pagination .pagitem {
+	padding-left: 14px;
+	margin-left: 5px;
+}
+.history .pagination .pagitem.text {
+	padding-left: 0px;
+	margin-left: 5px;
+}
+
+.og-add-custom-properties th {
+	background-color: #4f4f4f;
+	color: #d1d1d1;
+	font-weight: normal;
+	
+}
+.og-add-custom-properties table {
+	border: 1px solid #888;
+	margin-bottom: 5px;
+}
+.og-add-custom-properties td input {
+	border-left: 0px none;
+	border-top: 0px none;
+}
+
+.og-custom-properties .og-add-custom-properties {
+	border: 1px solid #ccc;
+}
+.og-custom-properties .og-add-custom-properties td {
+	border-right: 1px solid #ccc;
+	border-bottom: 1px solid #ccc;
+	padding-left: 4px;
+}
+.coViewBody .direct-url {
+	margin: 15px 0;
+}
+
+.coViewAction.disabled {
+	color: #999;
 }

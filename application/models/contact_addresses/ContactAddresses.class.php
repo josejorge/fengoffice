@@ -15,7 +15,7 @@
     */
     function getContactMainAddressType(Contact $contact) {
       
-      $contact_address_values_table = ContactAddresss::instance()->getTableName(true);
+      $contact_address_values_table = ContactAddresses::instance()->getTableName(true);
       $address_types_table = AddressTypes::instance()->getTableName(true);
       
       $sql = "SELECT $address_types_table.* FROM $address_types_table, $contact_address_values_table WHERE $address_types_table.`id` = $contact_address_values_table.`address_type_id` AND $contact_address_values_table.`is_main` = '1' AND $contact_address_values_table.`contact_id` = ?";
@@ -36,7 +36,7 @@
     * @return array
     */
     function getByContact(Contact $contact) {
-      return self::findAll(array(
+      return self::instance()->findAll(array(
         'conditions' => '`contact_id` = ' . DB::escape($contact->getId())
       )); // findAll
     } // getByContact
@@ -48,7 +48,7 @@
     * @param Contact $contact
     * @return boolean
     */
-    function clearByContact(Contact $contact) {
+    static function clearByContact(Contact $contact) {
       return DB::execute('DELETE FROM ' . self::instance()->getTableName(true) . ' WHERE `contact_id` = ?', $contact->getId());
     } // clearByContact
     
@@ -63,7 +63,7 @@
     * @return ContactAddress
     */
     function getAddressByTypeId(Contact $contact,$typeId ,$main = 1 ) {
-      return self::findOne(array(
+      return self::instance()->findOne(array(
         'conditions' => '`contact_id` = ' . DB::escape($contact->getId()) . 'AND is_main = '. $main. ' AND address_type_id = '.$typeId
       )); // findOne
     } // getAddressByTypeId 

@@ -196,7 +196,7 @@ function is_valid_hash($hash) {
  * @param mixed $default
  * @return mixed
  */
-function array_var(&$from, $name, $default = null) {
+function array_var($from, $name, $default = null) {
 	if(is_array($from)) return isset($from[$name]) ? $from[$name] : $default;
 	return $default;
 } // array_var
@@ -260,7 +260,7 @@ function is_iframe_request() {
  *
  * @param string $csv
  * @param $value
- * @return unknown
+ * @return bool
  */
 function in_csv(string $csv, $value){
 	$arr = explode(',',$csv);
@@ -332,9 +332,12 @@ function str_replace_first($search_for, $replace_with, $in) {
  * @param string $niddle Needle string
  * @return boolean
  */
-function str_starts_with($string, $niddle) {
-	return substr($string, 0, strlen($niddle)) == $niddle;
-} // end func str_starts with
+
+ if (!function_exists('str_starts_with')) { 
+	 function str_starts_with($string, $niddle) {
+		return substr($string, 0, strlen($niddle)) == $niddle;
+	} // end func str_starts with
+}
 
 /**
  * String ends with something
@@ -346,10 +349,11 @@ function str_starts_with($string, $niddle) {
  * @param string $needdle Needle string
  * @return boolean
  */
-function str_ends_with($string, $needdle) {
-	return substr($string, strlen($string) - strlen($needdle), strlen($needdle)) == $needdle;
-} // end func str_ends_with
-
+if (!function_exists('str_ends_with')) { 
+	function str_ends_with($string, $needdle) {
+		return substr($string, strlen($string) - strlen($needdle), strlen($needdle)) == $needdle;
+	} // end func str_ends_with
+}
 /**
  * Return path with trailing slash
  *
@@ -392,7 +396,7 @@ function is_valid_email($user_email) {
  * Verify the syntax of the given URL.
  *
  * @access public
- * @param $url The URL to verify.
+ * @param $url string The URL to verify.
  * @return boolean
  */
 function is_valid_url($url) {
@@ -492,7 +496,8 @@ function get_max_execution_time() {
 function php_config_value_to_bytes($val) {
 	$val = trim($val);
 	if ($val == "") return 0;
-	$last = strtolower($val{strlen($val)-1});
+	$last = strtolower($val[strlen($val)-1]);
+	$val  = (int)substr($val, 0, -1);
 	switch($last) {
 		// The 'G' modifier is available since PHP 5.1.0
 		case 'g':
@@ -519,11 +524,11 @@ function php_config_value_to_bytes($val) {
  * @return null
  */
 function fix_input_quotes() {
-	if(get_magic_quotes_gpc()) {
+	// if(get_magic_quotes_gpc()) {
 		array_stripslashes($_GET);
 		array_stripslashes($_POST);
 		array_stripslashes($_COOKIE);
-	} // if
+	// } // if
 } // fix_input_quotes
 
 /**
@@ -650,18 +655,30 @@ function gen_id() {
 }
 
 function purify_html($html) {
-	require_once LIBRARY_PATH . "/htmlpurifier/HTMLPurifier.standalone.php";
+	include(LIBRARY_PATH . '/htmlpurifier/library/HTMLPurifier.auto.php');
+
 	$config = null;
 	if (defined('CUSTOM_HTMLPURIFIER_CACHEDIR') && is_dir(CUSTOM_HTMLPURIFIER_CACHEDIR)) {
 		$config = HTMLPurifier_Config::createDefault();
 		$config->set('Cache.SerializerPath', CACHE_DIR);
 	}
+	
 	$p = new HTMLPurifier($config);
 	return $p->purify($html);
+
+	// require_once LIBRARY_PATH . "/htmlpurifier/HTMLPurifier.standalone.php";
+	// $config = null;
+	// if (defined('CUSTOM_HTMLPURIFIER_CACHEDIR') && is_dir(CUSTOM_HTMLPURIFIER_CACHEDIR)) {
+	// 	$config = HTMLPurifier_Config::createDefault();
+	// 	$config->set('Cache.SerializerPath', CACHE_DIR);
+	// }
+	// $p = new HTMLPurifier($config);
+	// return $p->purify($html);
 }
+
 /**
  * 
- * @return the real Clients IP
+ * @return string the real Clients IP
  */
 function get_ip_address()
 {
@@ -719,7 +736,7 @@ function HttpRequest( $url, $method = 'GET', $data = NULL, $additional_headers =
 	# in compliance with the RFC 2616 post data will not redirected
 	$method = strtoupper($method);
 	$url_parsed = @parse_url($url);
-	if (!@$url_parsed['scheme']) $url_parsed = @parse_url('http://'.$url);
+	if (!@$url_parsed['scheme']) $url_parsed = @parse_url('https://'.$url);
 	extract($url_parsed);
 	if(!is_array($data)) {
 		$data = NULL;

@@ -23,7 +23,7 @@
     	'state' => DATA_TYPE_STRING, 
     	'country' => DATA_TYPE_STRING,
     	'zip_code' => DATA_TYPE_STRING,
-    	'is_main' => DATA_TYPE_BOOLEAN
+    	'is_main' => DATA_TYPE_BOOLEAN,
     );
   
     /**
@@ -32,7 +32,7 @@
     * @return BaseContactAddresses 
     */
     function __construct() {
-      //Hook::fire('object_definition', 'ContactAddress', self::$columns);
+      Hook::fire('object_definition', 'ContactAddress', self::$columns);
       parent::__construct('ContactAddress', 'contact_addresses', true);
     } // __construct
     
@@ -205,7 +205,7 @@
     * @param integer $current_page Current page number
     * @return array
     */
-    function paginate($arguments = null, $items_per_page = 10, $current_page = 1) {
+    function paginate($arguments = null, $items_per_page = 10, $current_page = 1, $count = null) {
       if(isset($this) && instance_of($this, 'ContactAddresses')) {
         return parent::paginate($arguments, $items_per_page, $current_page);
       } else {
@@ -218,7 +218,7 @@
     *
     * @return ContactAddresses 
     */
-    function instance() {
+    static function instance() {
       static $instance;
       if(!instance_of($instance, 'ContactAddresses')) {
         $instance = new ContactAddresses();

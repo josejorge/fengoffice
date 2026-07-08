@@ -26,7 +26,9 @@
 	    'fixed_billing' => DATA_TYPE_FLOAT, 
 	    'hourly_billing' => DATA_TYPE_FLOAT, 
 	    'is_fixed_billing' => DATA_TYPE_BOOLEAN, 
-	    'billing_id' => DATA_TYPE_INTEGER
+	    'billing_id' => DATA_TYPE_INTEGER,
+    	'rate_currency_id' => DATA_TYPE_INTEGER,
+    	'worked_time' => DATA_TYPE_INTEGER,
     );
   
     /**
@@ -89,7 +91,15 @@
     
     
 	function getExternalColumns() {
-		return array_merge(parent::getExternalColumns(), array('contact_id', 'time', 'billing'));
+		return array_merge(parent::getExternalColumns(), array('contact_id', 'rel_object_id'));
+	}
+	
+	/**
+	 * Returns the numeric fields that store a time value
+	 * Must be overriden by the specific object classes
+	 */
+	function getTimeColumns() {
+		return array('worked_time', 'subtract');
 	}
 	
 	
@@ -102,7 +112,7 @@
 	 */
 	function getSystemColumns() {
 		return array_merge(parent::getSystemColumns(), array(
-      		'end_time', 'paused_on', 'subtract', 'fixed_billing', 'hourly_billing', 'is_fixed_billing', 'billing_id'
+      		'paused_on', 'is_fixed_billing', 'billing_id', 
 		));
 	} // getSystemColumns
     
@@ -223,20 +233,20 @@
     * @param integer $current_page Current page number
     * @return array
     */
-    function paginate($arguments = null, $items_per_page = 10, $current_page = 1) {
+    function paginate($arguments = null, $items_per_page = 10, $current_page = 1, $count = null) {
       if(isset($this) && instance_of($this, 'Timeslots')) {
         return parent::paginate($arguments, $items_per_page, $current_page);
       } else {
         return Timeslots::instance()->paginate($arguments, $items_per_page, $current_page);
       } // if
     } // paginate
-    
+
     /**
     * Return manager instance
     *
     * @return Timeslots 
     */
-    function instance() {
+    static function instance() {
       static $instance;
       if(!instance_of($instance, 'Timeslots')) {
         $instance = new Timeslots();

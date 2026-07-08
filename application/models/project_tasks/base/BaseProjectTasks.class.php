@@ -49,7 +49,16 @@ abstract class BaseProjectTasks extends ContentDataObjects {
         'use_start_time' => DATA_TYPE_BOOLEAN,
         'original_task_id' => DATA_TYPE_INTEGER,
         'instantiation_id' => DATA_TYPE_INTEGER,
-        'type_content' => DATA_TYPE_STRING
+        'type_content' => DATA_TYPE_STRING,
+        'total_worked_time' => DATA_TYPE_INTEGER,
+		'mark_as_started'=> DATA_TYPE_BOOLEAN,
+		'move_direction_non_working_days' => DATA_TYPE_STRING,
+		'overall_worked_time_plus_subtasks' => DATA_TYPE_INTEGER,
+		'total_time_estimate' => DATA_TYPE_INTEGER,
+		'is_manual_percent_completed' => DATA_TYPE_BOOLEAN,
+
+		
+	    
 	);
 
 	/**
@@ -118,7 +127,7 @@ abstract class BaseProjectTasks extends ContentDataObjects {
 	 */
 	function getSystemColumns() {
 		return array_merge(parent::getSystemColumns(), array(
-      		'object_subtype', 'parent_id', 'parents_path',	'depth', 'assigned_to_contact_id', 'completed_by_id', 'milestone_id', 'state', 'started_by_id', 
+      		'object_subtype', 'parents_path', 'depth', 'milestone_id', 'state', 'started_by_id', 'started_on',
                 'from_template_id', 'from_template_object_id', 'use_due_time', 'use_start_time', 'original_task_id', 'multi_assignment', 'instantiation_id')
 		);
 	} // getSystemColumns
@@ -133,6 +142,15 @@ abstract class BaseProjectTasks extends ContentDataObjects {
     function getExternalColumns() {
       return array_merge(parent::getExternalColumns(), array('object_subtype', 'assigned_to_contact_id', 'completed_by_id', 'assigned_by_id', 'milestone_id'));
     } // getExternalColumns
+    
+
+    /**
+     * Returns the numeric fields that store a time value
+     * Must be overriden by the specific object classes
+     */
+    function getTimeColumns() {
+    	return array('time_estimate', 'total_worked_time', 'overall_worked_time_plus_subtasks', 'total_time_estimate');
+    }
 	
 	/**
     * Return report object title columns
@@ -162,16 +180,22 @@ abstract class BaseProjectTasks extends ContentDataObjects {
     *
     * @access public
     * @param void
-    * @return string
+    * @return array
     */
     function getTemplateObjectProperties() {
-    	return array(
-    		array('id' => 'name', 'type' => self::getColumnType('name')),
-    		array('id' => 'text', 'type' => self::getColumnType('text')),
-    		array('id' => 'start_date', 'type' => self::getColumnType('start_date')),
-    		array('id' => 'due_date', 'type' => self::getColumnType('due_date')),
-    		array('id' => 'assigned_to_contact_id', 'type' => 'USER')
+    	$templateObjectProperties = array(
+    		array('id' => 'name', 'type' => self::instance()->getColumnType('name')),
+    		array('id' => 'text', 'type' => self::instance()->getColumnType('text')),
+    		array('id' => 'start_date', 'type' => self::instance()->getColumnType('start_date')),
+    		array('id' => 'due_date', 'type' => self::instance()->getColumnType('due_date')),
+            array('id' => 'assigned_to_contact_id', 'type' => 'USER')
     	);
+
+		//Add more possible Object Properties
+        Hook::fire('add_custom_properties_as_template_properties', null, $templateObjectProperties);
+
+		return $templateObjectProperties;
+
     } // getTemplateObjectProperties
 
 	// -------------------------------------------------------
@@ -291,7 +315,7 @@ abstract class BaseProjectTasks extends ContentDataObjects {
 	 * @param integer $current_page Current page number
 	 * @return array
 	 */
-	function paginate($arguments = null, $items_per_page = 10, $current_page = 1) {
+	function paginate($arguments = null, $items_per_page = 10, $current_page = 1, $count = null) {
 		if(isset($this) && instance_of($this, 'ProjectTasks')) {
 			return parent::paginate($arguments, $items_per_page, $current_page);
 		} else {
@@ -304,7 +328,7 @@ abstract class BaseProjectTasks extends ContentDataObjects {
 	 *
 	 * @return ProjectTasks
 	 */
-	function instance() {
+	static function instance() {
 		static $instance;
 		if(!instance_of($instance, 'ProjectTasks')) {
 			$instance = new ProjectTasks();

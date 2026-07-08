@@ -18,7 +18,8 @@
     	'dimension_id' => DATA_TYPE_INTEGER, 
     	'object_type_id' => DATA_TYPE_INTEGER,
     	'is_root' => DATA_TYPE_BOOLEAN,
-    	'options' => DATA_TYPE_STRING
+    	'options' => DATA_TYPE_STRING,
+    	'enabled' => DATA_TYPE_BOOLEAN,
     );
   
     /**
@@ -199,7 +200,7 @@
     * @param integer $current_page Current page number
     * @return array
     */
-    function paginate($arguments = null, $items_per_page = 10, $current_page = 1) {
+    function paginate($arguments = null, $items_per_page = 10, $current_page = 1, $count = null) {
       if(isset($this) && instance_of($this, 'DimensionObjectTypes')) {
         return parent::paginate($arguments, $items_per_page, $current_page);
       } else {
@@ -212,7 +213,7 @@
     *
     * @return DimensionObjectTypes 
     */
-    function instance() {
+    static function instance() {
       static $instance;
       if(!instance_of($instance, 'DimensionObjectTypes')) {
         $instance = new DimensionObjectTypes();

@@ -52,9 +52,10 @@ $genid = gen_id();
 		if ($account->canDelete(logged_user())) {
 			$options[] = '<a class="internalLink" href="javascript:og.promptDeleteAccount(' . $account->getId() . ', true)">' . lang('delete') . '</a>';
 		} // if
+		
 		if ($account->canDelete(logged_user()) && config_option("sent_mails_sync")) {		
 			$options[] = '<a class="internalLink" href="'.get_url('mail', 'sync_old_sent_mails', array('id' => $account->getId())).'">' . lang('sync') . '</a>';
-		}		
+		}
 		?>
 		<td><?php echo implode(' | ', $options) ?></td>
 	</tr>

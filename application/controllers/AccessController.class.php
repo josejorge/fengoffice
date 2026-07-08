@@ -27,7 +27,7 @@ class AccessController extends ApplicationController {
 	 * @param void
 	 * @return null
 	 */
-	function login() {
+	function login($data_form_api = null) {
 		include_once ROOT . "/library/browser/Browser.php";
 		if (Browser::instance()->getBrowser() == Browser::BROWSER_IE && Browser::instance()->getVersion() < 7) {
 			flash_error(lang("ie browser outdated"));
@@ -56,7 +56,15 @@ class AccessController extends ApplicationController {
 			$this->redirectTo($ref_controller, $ref_action, $ref_params);
 		} // if
 
-		$login_data = array_var($_POST, 'login');
+
+		$form_submitted = false;
+        if(!is_null($data_form_api)){
+            $login_data = $data_form_api;
+        } else {
+        	$login_data = array_var($_POST, 'login');
+        	$form_submitted = is_array($login_data);
+        }
+        
 		$localization = array_var($_POST, 'configOptionSelect');
 		
 		if(!is_array($login_data)) {
@@ -67,8 +75,11 @@ class AccessController extends ApplicationController {
 		} // if
 
 		tpl_assign('login_data', $login_data);
-
-		if(is_array(array_var($_POST, 'login'))) {
+        $errors = array();
+		
+        // process the data sent by the form or given by parameter
+        if($form_submitted || !is_null($data_form_api)) {
+        	
 			$username = array_var($login_data, 'username');
 			$password = array_var($login_data, 'password');
 			$remember = array_var($login_data, 'remember') == 'checked';
@@ -79,37 +90,60 @@ class AccessController extends ApplicationController {
 				$sec_logs = AdministrationLogs::getLastLogs(AdministrationLogs::ADM_LOG_CATEGORY_SECURITY, "invalid login", array_var($_SERVER, 'REMOTE_ADDR'), 10, "`created_on` > '".$from_time->toMySQL()."'");
 				if (is_array($sec_logs) && count($sec_logs) >= 5) {
 					AdministrationLogs::createLog("invalid login", array_var($_SERVER, 'REMOTE_ADDR'), AdministrationLogs::ADM_LOG_CATEGORY_SECURITY);
-					tpl_assign('error', new Error(lang('invalid login data')));
-					$this->render();
+
+					if (!is_null($data_form_api)){
+					    $errors[] = lang('invalid login data');
+                    }else{
+                        tpl_assign('error', new Error(lang('invalid login data')));
+                        $this->render();
+                    }
+
+
 				}
 			}
-
 			if(trim($username) == '') {
 				AdministrationLogs::createLog("invalid login", array_var($_SERVER, 'REMOTE_ADDR'), AdministrationLogs::ADM_LOG_CATEGORY_SECURITY);
-				tpl_assign('error', new Error(lang('username value missing')));
-				$this->render();
+
+                if (!is_null($data_form_api)){
+                    $errors[] = lang('username value missing');
+                }else{
+                    tpl_assign('error', new Error(lang('username value missing')));
+                    $this->render();
+                }
+
 			} // if
 
 			if(trim($password) == '') {
 				AdministrationLogs::createLog("invalid login", array_var($_SERVER, 'REMOTE_ADDR'), AdministrationLogs::ADM_LOG_CATEGORY_SECURITY);
-				tpl_assign('error', new Error(lang('password value missing')));
-				$this->render();
+
+                if (!is_null($data_form_api)){
+                    $errors[] = lang('password value missing');
+                }else{
+                    tpl_assign('error', new Error(lang('password value missing')));
+                    $this->render();
+                }
+
 			} // if
-			
 			if (preg_match(EMAIL_FORMAT, $username)) {
-				$user = Contacts::getByEmail($username);
+				$user = Contacts::getByEmail($username, null, true);
 				
 			} else {
 				$user = Contacts::getByUsername($username);
 			}
 			if(!($user instanceof Contact && $user->isUser()) || $user->getDisabled()) {
 				AdministrationLogs::createLog("invalid login", array_var($_SERVER, 'REMOTE_ADDR'), AdministrationLogs::ADM_LOG_CATEGORY_SECURITY);
-				tpl_assign('error', new Error(lang('invalid login data')));
-				$this->render();
+
+                if (!is_null($data_form_api)){
+                    $errors[] = lang('invalid login data');
+                    return array('status'=>false,'msg'=>'session inactive','error'=>$errors);
+                }else{
+                    tpl_assign('error', new Error(lang('invalid login data')));
+                    $this->render();
+                }
+
 			} // if
-	
 			$userIsValidPassword = false;
-			// If ldap authentication is enabled ldap.config.php will return true.
+			// If ldap authentication is enabled ldap.config.php will return trsue.
 			$config_ldap_file_path = ROOT . '/config/ldap.config.php'; 
 			$config_ldap_is_set = file_exists($config_ldap_file_path) && include_once($config_ldap_file_path);				
 			if($config_ldap_is_set === true) {
@@ -118,18 +152,25 @@ class AccessController extends ApplicationController {
 			if (!$userIsValidPassword){
 			  	$userIsValidPassword = $user->isValidPassword($password);
 			}
-		
+
+			Hook::fire('additional_login_validations', array('user' => $user), $userIsValidPassword);
 			if (!$userIsValidPassword) {
 				AdministrationLogs::createLog("invalid login", array_var($_SERVER, 'REMOTE_ADDR'), AdministrationLogs::ADM_LOG_CATEGORY_SECURITY);
-				tpl_assign('error', new Error(lang('invalid login data')));
-				$this->render();
+
+                if (!is_null($data_form_api)){
+                    $errors[] = lang('invalid login data');
+                    return array('status'=>false,'msg'=>'session inactive','error'=>$errors);
+                }else{
+                    tpl_assign('error', new Error(lang('invalid login data')));
+                    $this->render();
+                }
+
 			} // if
 			
 			//Start change user language
 			if ($localization != 'Default' && self::check_valid_localization($localization)) {
 				set_user_config_option('localization',$localization,$user->getId());
 			}
-			
 			$ref_controller = null;
 			$ref_action = null;
 			$ref_params = array();
@@ -150,7 +191,6 @@ class AccessController extends ApplicationController {
 				} // if
 			} // if
 			if(!count($ref_params)) $ref_params = null;
-						
 			if(ContactPasswords::validatePassword($password)){
 				$newest_password = ContactPasswords::getNewestContactPassword($user->getId());
 				if(!$newest_password instanceof ContactPassword){
@@ -162,37 +202,78 @@ class AccessController extends ApplicationController {
 					$user_password->save();
 				}else{
 					if(ContactPasswords::isContactPasswordExpired($user->getId())){
-						$this->redirectTo('access', 'change_password', 
-						array('id' => $user->getId(),
-							'msg' => 'expired',
-							'ref_c' => $ref_controller,
-							'ref_a' => $ref_action,
-							$ref_params));
+
+                        if (!is_null($data_form_api)){
+                            $errors[] = lang('invalid login data');
+                            return array('status'=>false,'msg'=>'session inactive','error'=>$errors);
+                        }else{
+                            $this->redirectTo('access', 'change_password',
+                                array('id' => $user->getId(),
+                                    'msg' => 'expired',
+                                    'ref_c' => $ref_controller,
+                                    'ref_a' => $ref_action,
+                                    $ref_params));
+                        }
+
+
 					}
 				}
 			}else{
-				$this->redirectTo('access', 'change_password', 
-						array('id' => $user->getId(),
-							'msg' => 'invalid',
-							'ref_c' => $ref_controller,
-							'ref_a' => $ref_action,
-							$ref_params));
+
+                if (!is_null($data_form_api)){
+                    $errors[] = lang('invalid login data');
+                    return array('status'=>false,'msg'=>'session inactive','error'=>$errors);
+                }else{
+                    $this->redirectTo('access', 'change_password',
+                        array('id' => $user->getId(),
+                            'msg' => 'invalid',
+                            'ref_c' => $ref_controller,
+                            'ref_a' => $ref_action,
+                            $ref_params));
+                }
+
 			}
-			
-			
+
 			try {
 				CompanyWebsite::instance()->logUserIn($user, $remember);
 				$ip  = get_ip_address();
 				ApplicationLogs::createLog($user,ApplicationLogs::ACTION_LOGIN,false,false,true,$ip);
 			} catch(Exception $e) {
-				tpl_assign('error', new Error(lang('invalid login data')));
-				$this->render();
+
+
+                if (!is_null($data_form_api)){
+                    $errors[] = lang('invalid login data');
+                    return array('status'=>false,'msg'=>'session inactive','error'=>$errors);
+                }else{
+                    tpl_assign('error', new Error(lang('invalid login data')));
+                    $this->render();
+                }
+
+
 			} // try
 
 			if($ref_controller && $ref_action) {
-				$this->redirectTo($ref_controller, $ref_action, $ref_params);
+
+                if (!is_null($data_form_api)){
+                    return array('status'=>true,'msg'=>'vpi');
+                }else{
+	    			$this->redirectTo($ref_controller, $ref_action, $ref_params);
+                }
+
 			} else {
-				$this->redirectTo('access', 'index');
+
+                if (!is_null($data_form_api)){
+
+                    if(function_exists('logged_user') && (logged_user() instanceof Contact && logged_user()->isUser())) {
+                        return array('status'=>true,'msg'=>'session active','contact'=>logged_user()->getId());
+                    }else{
+                        return array('status'=>false,'msg'=>'session inactive','error'=>$errors);
+                    }
+
+                }else{
+    				$this->redirectTo('access', 'index');
+                }
+
 			} // if
 		} // if
 	} // login
@@ -215,6 +296,7 @@ class AccessController extends ApplicationController {
 			$this->redirectTo('dashboard', 'main_dashboard');
 		} else {
 			if (!(logged_user() instanceof Contact && logged_user()->isUser())) {
+				Hook::fire('before_redirect_to_login',null,$ret);
 				$this->redirectTo('access', 'login');
 			}
 			
@@ -235,7 +317,7 @@ class AccessController extends ApplicationController {
 	 * @return null
 	 */
 	function change_password(){
-		$user = Contacts::findById(get_id());
+		$user = Contacts::instance()->findById(get_id());
 					
 		if(!($user instanceof Contact && $user->isUser()) || $user->getDisabled()) return;
 		
@@ -257,7 +339,7 @@ class AccessController extends ApplicationController {
 			$new_password = array_var($changePassword_data, 'newPassword');
 			$repeat_password = array_var($changePassword_data, 'repeatPassword');
 			
-			if (trim($username) != $user->getUsername()) {
+			if (trim($username) != $user->getUsername() && trim($username) != $user->getEmailAddress()) {
 				tpl_assign('error', new Error(lang('invalid login data')));
 				$this->render();
 			}
@@ -327,7 +409,7 @@ class AccessController extends ApplicationController {
 			$user->save();
 			
 			try {
-				CompanyWebsite::instance()->logUserIn($user, $remember);
+				CompanyWebsite::instance()->logUserIn($user);
 			} catch(Exception $e) {
 				tpl_assign('error', new Error(lang('invalid login data')));
 				$this->render();
@@ -449,7 +531,7 @@ class AccessController extends ApplicationController {
 				$this->render();
 			} // if
 
-			$user = Contacts::getByEmail($your_email);
+			$user = Contacts::getByEmail($your_email, null, true);
 			if(!($user instanceof Contact && $user->isUser()) || $user->getDisabled()) {
 				flash_error(lang('email address not in use', $your_email));
 				$this->redirectTo('access', 'forgot_password');
@@ -503,7 +585,7 @@ class AccessController extends ApplicationController {
 
 				DB::beginWork();
 
-				Contacts::delete(); // clear users table
+				Contacts::instance()->delete(); // clear users table
 
 				// Create a company
 				$company = new Contact();
@@ -520,7 +602,7 @@ class AccessController extends ApplicationController {
 
 				// Create the administrator user
 				$administrator = new Contact();
-				$pergroup = PermissionGroups::findOne(array('conditions'=>"`name`='Super Administrator'"));
+				$pergroup = PermissionGroups::instance()->findOne(array('conditions'=>"`name`='Super Administrator'"));
 				$administrator->setUserType($pergroup->getId());
 				$administrator->setCompanyId($company->getId());
 				$administrator->setUsername(array_var($form_data, 'admin_username'));
@@ -571,10 +653,10 @@ class AccessController extends ApplicationController {
 				}
 				
 				// dimension permissions
-				$dimensions = Dimensions::findAll();
+				$dimensions = Dimensions::instance()->findAll();
 				foreach ($dimensions as $dimension) {
 					if ($dimension->getDefinesPermissions()) {
-						$cdp = ContactDimensionPermissions::findOne(array("conditions" => "`permission_group_id` = ".$administrator->getPermissionGroupId()." AND `dimension_id` = ".$dimension->getId()));
+						$cdp = ContactDimensionPermissions::instance()->findOne(array("conditions" => "`permission_group_id` = ".$administrator->getPermissionGroupId()." AND `dimension_id` = ".$dimension->getId()));
 						if (!$cdp instanceof ContactDimensionPermission) {
 							$cdp = new ContactDimensionPermission();
 							$cdp->setPermissionGroupId($administrator->getPermissionGroupId());
@@ -589,7 +671,7 @@ class AccessController extends ApplicationController {
 							$ots = DimensionObjectTypeContents::getContentObjectTypeIds($dimension->getId(), $member->getObjectTypeId());
 							$ots[]=$member->getObjectId();
 							foreach ($ots as $ot) {
-								$cmp = ContactMemberPermissions::findOne();
+								$cmp = ContactMemberPermissions::instance()->findOne();
 								if (!$cmp instanceof ContactMemberPermission) {
 									$cmp = new ContactMemberPermission(array("conditions" => "`permission_group_id` = ".$administrator->getPermissionGroupId()." AND `member_id` = ".$member->getId()." AND `object_type_id` = $ot"));
 									$cmp->setPermissionGroupId($administrator->getPermissionGroupId());
@@ -619,6 +701,16 @@ class AccessController extends ApplicationController {
 				  )
 				ON DUPLICATE KEY UPDATE member_id=0;");
 				
+				DB::execute("
+					INSERT INTO `".TABLE_PREFIX."objects` (`object_type_id`, `name`, `created_on`, `created_by_id`, `updated_on`, `updated_by_id`, `trashed_by_id`, `archived_by_id`, `trashed_on`, `archived_on`) VALUES
+					((SELECT id FROM ".TABLE_PREFIX."object_types WHERE name='report'), 'task time report', NOW(), ".$administrator->getId().", NOW(), ".$administrator->getId().", 0, 0, 0, 0);
+				");
+				DB::execute("
+					INSERT INTO `".TABLE_PREFIX."reports` (`object_id`, `description`, `report_object_type_id`, `order_by`, `is_order_by_asc`, `ignore_context`, `is_default`, `code`, `function_url`) VALUES
+					((SELECT max(id) FROM ".TABLE_PREFIX."objects WHERE object_type_id=(SELECT id FROM ".TABLE_PREFIX."object_types WHERE name='report')), 'task time report description', (SELECT id FROM ".TABLE_PREFIX."object_types WHERE name='timeslot'), '', 1, 1, 1, 'total_task_times_report', '?c=reporting&a=total_task_times_p');
+				");
+				
+				$null = null;
 				Hook::fire('after_user_add', $administrator, $null);
 				
 				DB::commit();
@@ -640,7 +732,7 @@ class AccessController extends ApplicationController {
 		$filenames = get_files($fileDir, "js");
 		sort($filenames);
 		foreach ($filenames as $f) {
-			$content .= "\n/* $f */\n";
+			//$content .= "\n/* $f */\n";
 			$content .= "try {";				
 			$content .= file_get_contents($f);
 			$content .= "} catch (e) {}";
@@ -682,6 +774,13 @@ class AccessController extends ApplicationController {
 	
 	function get_javascript_translation_default() {
 		$defaultLang = "en_us";
+		
+		if (Localization::instance()->getLocale() == $defaultLang) {
+			$this->setLayout("json");
+			$this->renderText("", true);
+			return;
+		}
+		
 		$content = "/* start */\n";		
 		$fileDir = ROOT . "/language/".$defaultLang;
 	
@@ -690,13 +789,14 @@ class AccessController extends ApplicationController {
 			
 		sort($filenames);
 		foreach ($filenames as $f) {
-			$content .= "\n/* $f */\n";
+			//$content .= "\n/* $f */\n";
 			$content .= "try {";
 			$content .= file_get_contents($f);
 			$content .= "} catch (e) {}";
 		}
 	
-		$plugins = Plugins::instance ()->getActive ();
+		// include all installed plugins, no matter if they they have not been activated
+		$plugins = Plugins::instance ()->getAll();
 	
 		foreach ( $plugins as $plugin ) {
 			$plg_dir = $plugin->getLanguagePath () . "/" . $defaultLang;
@@ -740,7 +840,7 @@ class AccessController extends ApplicationController {
 			flash_error(lang('invalid parameters'));
 			$this->redirectTo('access', 'login');
 		}
-		$user = Contacts::findById($uid);
+		$user = Contacts::instance()->findById($uid);
 		if (!($user instanceof Contact && $user->isUser()) || $user->getDisabled()) {
 			flash_error(lang('user dnx'));
 			$this->redirectTo('access', 'login');

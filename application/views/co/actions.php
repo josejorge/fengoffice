@@ -10,10 +10,14 @@
 	<tr><td class="coViewRight" rowspan=2></td></tr>
 	
 	<tr>
-		<td class="coViewBody" style="border:1px solid #ccc;" colspan=2> <?php
-		if (count(PageActions::instance()->getActions()) > 0 ) { ?>
+		<td id="<?php echo $genid ?>_obj_actions" class="coViewBody" style="border:1px solid #ccc;" colspan=2> <?php
+
+		$page_actions = PageActions::instance();
+		$pactions = $page_actions->getActions();
+		
+		if (count($pactions) > 0 ) { ?>
 			<div id="actionsDialog1"> <?php
-				$pactions = PageActions::instance()->getActions();
+				//$pactions = PageActions::instance()->getActions();
 				$shown = 0;
 				foreach ($pactions as $action) {
 					if ($action->isCommon) {
@@ -28,7 +32,6 @@
 				}//foreach ?>
 			</div> <?php
 			
-			$count = count($pactions);
 			foreach ($pactions as $action) {
 				if (!$action->isCommon) {			 		
 			 		if ($action->getTarget() != '') { ?>
@@ -40,7 +43,9 @@
 				}
 			} // foreach			
 		 }
-		 PageActions::clearActions(); ?>
+		 $page_actions->clearActions();
+		 //PageActions::clearActions();
+		 ?>
 		</td>
 	</tr>
 	<tr>
@@ -49,3 +54,23 @@
 		<td class="coViewBottomRight" style="width:12px;">&nbsp;&nbsp;</td>
 	</tr>
 </table>
+
+<script>
+
+	var obj_actions = $('#<?php echo $genid ?>_obj_actions a');
+
+	for (i = 0; i < obj_actions.length; ++i) {
+		$(obj_actions[i]).attr('id', 'obj_action_ref_'+i+'_<?php echo $genid ?>');
+		$(obj_actions[i]).click(function(e) {
+			if ($(this).attr("disabled") == "disabled") {
+				return false;
+			}
+			$(this).attr("disabled", "disabled");
+
+			var obj_link_id = $(this).attr('id');
+			setTimeout(function() {
+				$('#'+obj_link_id).attr("disabled", false);
+			}, 2000);
+		});
+	}
+</script>

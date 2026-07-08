@@ -6,7 +6,7 @@
   * @author Diego Castiglioni <diego.castiglioni@fengoffice.com>
   */
   class ContactAddress extends BaseContactAddress {
-  
+
     /**
     * Return Address type
     *
@@ -15,9 +15,9 @@
     * @return AddressType
     */
     function getAddressType() {
-      return AddressTypes::findById($this->getAddressTypeId());
+      return AddressTypes::instance()->findById($this->getAddressTypeId());
     } // getAddressType
-    
+
     /**
     * Return contact
     *
@@ -26,9 +26,9 @@
     * @return Contact
     */
     function getContact() {
-      return Contacts::findById($this->getContactId());
+      return Contacts::instance()->findById($this->getContactId());
     } // getContact
-    
+
         /**
     * Edit address
     *
@@ -47,8 +47,8 @@
     	$this->setIsMain($isMain);
     	$this->save();
     } // edit
-    
-    
+
+
     /**
 	 * Return name of country
 	 *
@@ -61,7 +61,63 @@
 		return lang('country ' . $this->getCountry());
 		return '';
 	} // getCountryName
-    
-  } // ContactAddress 
+
+
+    function getArrayInfo(){
+	    return array(
+	        'street'=>$this->getStreet(),
+            'city'=>$this->getCity(),
+    		'state'=>$this->getState(),
+    		'country'=>$this->getCountry(),
+    		'country_name'=>$this->getCountryName(),
+            'zipcode'=>$this->getZipCode(),
+			'parsed'=> $this->toString()
+        );
+    }
+
+	function toString($include_type_label=false) {
+		$address = $this;
+		$out = "";
+
+		if ($include_type_label) {
+			$address_type = $address->getAddressType();
+			if ($address_type instanceof AddressType) $out .= lang($address_type->getName()).": ";
+		}
+
+		$out .= $address->getStreet();
+		if($address->getCity() != '') {
+			$out .= ' - ' . $address->getCity();
+		}
+		if($address->getState() != '') {
+			$out .= ' - ' . $address->getState();
+		}
+		if($address->getZipCode() != '') {
+			$out .= ' - ' . $address->getZipCode();
+		}
+		if($address->getCountry() != '') {
+			$out .= ' - ' . $address->getCountryName();
+		}
+		return $out;
+	}
+
+
+	/**
+	 * Validate before save
+	 *
+	 * @param array $errors
+	 * @return null
+	 */
+	function validate($errors) {
+		$mandatory_fields = config_option('mandatory_address_fields');
+		if (is_array($mandatory_fields)) {
+			foreach ($mandatory_fields as $mfield) {
+				if (!$this->validatePresenceOf($mfield)) {
+					$errors[] = lang('address field is required', lang('address'), lang($mfield));
+				}
+			}
+		}
+	} // validate
+
+  } // ContactAddress
 
 ?>

@@ -1,8 +1,8 @@
 <?php
 
-	function clear_page_actions(){
-		return PageActions::instance()->clearActions();
-	}
+  function clear_page_actions(){
+	return PageActions::instance()->clearActions();
+  }
 
   /**
   * Return all page actions
@@ -304,7 +304,7 @@
     * @param void
     * @return PageActions
     */
-    function instance() {
+    static function instance() {
       static $instance;
       
       // Check instance

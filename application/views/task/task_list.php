@@ -3,6 +3,10 @@ require_javascript("og/modules/addTaskForm.js");
 $task_list = $object;
 $genid = gen_id();
 $description = "";
+
+$tz_offset = Timezones::getTimezoneOffsetToApply($task_list);
+$tz_offset = $tz_offset/3600;
+
 ?>
 <script>
   if(App.modules.addTaskForm) {
@@ -20,7 +24,7 @@ $description = "";
 
 		
 <?php if ($task_list->getObjectSubtype() > 0) {
-		$subType = ProjectCoTypes::findById($task_list->getObjectSubtype());
+		$subType = ProjectCoTypes::instance()->findById($task_list->getObjectSubtype());
 		if ($subType instanceOf ProjectCoType ) {
 			echo "<div><span class='bold'>" . lang('object type') . ":</span> " . $subType->getName() . "</div>";
 		}
@@ -70,7 +74,7 @@ if($task_list->getAssignedTo()){
 	<div style="width:50%; float: left;">
 	<?php if ($task_list->getDueDate() instanceof DateTimeValue) {
 	 		if ($task_list->getDueDate()->getYear() > DateTimeValueLib::now()->getYear()) { ?> 
-			<div class="member-path-dim-block dueDate"><span class="bold"><?php echo lang('due date') ?>: </span><?php echo format_datetime($task_list->getDueDate(), null, 0) ?></div>
+			<div class="member-path-dim-block dueDate"><span class="bold"><?php echo lang('due date') ?>: </span><?php echo format_datetime($task_list->getDueDate(), null, $tz_offset) ?></div>
 	  <?php } else { ?> 
 	 		<div class="member-path-dim-block dueDate"><span class="bold"><?php echo lang('due date') ?>: </span><?php
 	 		
@@ -80,7 +84,7 @@ if($task_list->getAssignedTo()){
 	 		}	 		
 	 	  	echo format_descriptive_date($task_list->getDueDate(),$tm);
 	 	  	if ($task_list->getUseDueTime()) {
-	 	  		echo " ".lang('by time')." " . format_time($task_list->getDueDate(), user_config_option('time_format_use_24') ? 'G:i' : 'g:i A');
+	 	  		echo " ".lang('by time')." " . format_time($task_list->getDueDate(), user_config_option('time_format_use_24') ? 'G:i' : 'g:i A', $tz_offset);
 	 	  	}
 	 	  	
 	 	  ?></div>
@@ -99,7 +103,7 @@ if($task_list->getAssignedTo()){
 	 		}
 	 	  	echo format_descriptive_date($task_list->getStartDate(),$tm);
 	 	  	if ($task_list->getUseDueTime()) {
-	 	  		echo " ".lang('by time')." " . format_time($task_list->getStartDate(), user_config_option('time_format_use_24') ? 'G:i' : 'g:i A');
+	 	  		echo " ".lang('by time')." " . format_time($task_list->getStartDate(), user_config_option('time_format_use_24') ? 'G:i' : 'g:i A', $tz_offset);
 	 	  	}
 	 	  	
 	 	  ?></div>
@@ -107,6 +111,8 @@ if($task_list->getAssignedTo()){
 		} ?>
 		 
 		 <div class="member-path-dim-block" style="font-weight:bold"><?php if (isset($status)){echo $status;} ?></div>
+		 <div class="member-path-dim-block" style="font-weight:bold"><?php echo lang('mark as started this task') .": "; echo ($task_list->getMarkAsStarted()) ? lang('yes') : lang('no'); ?></div>
+		 <?php $null=null; Hook::fire('view_task_render_more_properties', $task_list, $null)?>
 	</div>
 	<?php } ?>
 	
@@ -117,17 +123,17 @@ if($task_list->getAssignedTo()){
 
 
 
-<?php if ($task_list->isRepetitive()) { ?>
+<?php if ($last_task_of_repetition instanceof ProjectTask && $last_task_of_repetition->isRepetitive()) { ?>
 	<div style="font-weight:bold">
 	<?php 
 		echo '<br>' . lang('this task repeats'). '&nbsp;';
-		if ($task_list->getRepeatForever()) echo lang('forever');
-		else if ($task_list->getRepeatNum()) echo lang('n times', $task_list->getRepeatNum());
-		else if ($task_list->getRepeatEnd()) echo lang('until x', format_date($task_list->getRepeatEnd()));
+		if ($last_task_of_repetition->getRepeatForever()) echo lang('forever');
+		else if ($last_task_of_repetition->getRepeatNum()) echo lang('n times', $last_task_of_repetition->getRepeatNum());
+		else if ($last_task_of_repetition->getRepeatEnd()) echo lang('until x', format_date($last_task_of_repetition->getRepeatEnd()));
 		echo ", " . lang ('every') . " ";
-		if ($task_list->getRepeatD() > 0) echo lang('n days', $task_list->getRepeatD()) . ".";
-		else if ($task_list->getRepeatM() > 0) echo lang('n months', $task_list->getRepeatM()) . ".";
-		else if ($task_list->getRepeatY() > 0) echo lang('n years', $task_list->getRepeatY()) . ".";
+		if ($last_task_of_repetition->getRepeatD() > 0) echo lang('n days', $last_task_of_repetition->getRepeatD()) . ".";
+		else if ($last_task_of_repetition->getRepeatM() > 0) echo lang('n months', $last_task_of_repetition->getRepeatM()) . ".";
+		else if ($last_task_of_repetition->getRepeatY() > 0) echo lang('n years', $last_task_of_repetition->getRepeatY()) . ".";
 	?>
 	</div>
 <?php }

@@ -12,15 +12,15 @@
   	 * @return ContentDataObject
   	 * @param $object_id id of the content object to get
   	 */
-    static function findObject($object_id){
+    static function findObject($object_id, $force_reload=false){
     	
-    	$object = self::findById($object_id);
+    	$object = self::instance()->findById($object_id, $force_reload);
     	if (is_null($object)) return null;
     	$object_type = $object->getType();
     	if (!$object_type instanceof ObjectType) return null;
     	$handler_class = $object_type->getHandlerClass();
-    	
-    	eval('$concrete_object = '.$handler_class.'::findById('.$object_id.');');
+    	$concrete_object = $handler_class::instance()->findById($object_id, $force_reload);
+    	//eval('$concrete_object = '.$handler_class.'::instance()->findById('.$object_id.');');
     	
     	$object_type = null;
     	$object = null;
@@ -35,8 +35,10 @@
  	 * @param unknown_type $options
  	 * @author Pepe
  	 */
-	static function getObjects($context = null, $start = null, $limit = null, $order = null, $order_dir = null, $trashed = false, $archived = false, $filters = null, $start = 0 , $limit=null, $obj_type_types=null){
-
+    
+    //When upgrading to PHP7, realized that this has variable $start two times
+	//static function getObjects($context = null, $start = null, $limit = null, $order = null, $order_dir = null, $trashed = false, $archived = false, $filters = null, $start = 0 , $limit=null, $obj_type_types=null){
+    static function getObjects($context = null, $start = null, $limit = null, $order = null, $order_dir = null, $trashed = false, $archived = false, $filters = null, $start2 = 0 , $limit2=null, $obj_type_types=null){
 		switch ($order) {
 			case 'name' :
 					$order = 'o.name' ;
@@ -149,7 +151,7 @@
 	    		}
 	    		$query_params = array("conditions" => "`id` IN (".implode(",",$ids).")");
 	    		if (trim($q_order) != "") $query_params["order"] = $q_order;
-	    		$objects = Objects::findAll($query_params);
+	    		$objects = Objects::instance()->findAll($query_params);
 	    	}
     	}
     	
@@ -168,7 +170,7 @@
     	if (!is_null($filters) && is_array($filters)) {
     		$type_filters = array_var($filters, 'types');
 	    	if (is_array($type_filters) && count($type_filters) > 0) {
-	    		$type_filters_ids = ObjectTypes::findAll(array('id' => 'true', 'conditions' => "`name` IN (". DB::escape($type_filters).")"));
+	    		$type_filters_ids = ObjectTypes::instance()->findAll(array('id' => 'true', 'conditions' => "`name` IN (". DB::escape($type_filters).")"));
 	    		$type_filter_condition = " AND `o`.`object_type_id` IN (". implode(",",$type_filters_ids) .")";
 	    	}
 	    	
@@ -304,7 +306,7 @@
     		return self::prepareAssociationConditions($redefined_context, $context_dimensions, $properties, $pg_ids, $selection_members);
 	    }
     	
-    	$dimensions = Dimensions::findAll();
+    	$dimensions = Dimensions::instance()->findAll();
     	foreach ($dimensions as $dimension){
     		if ($dimension->canContainObjects() && !in_array($dimension, $context) && !in_array($dimension, $selected_dimensions)){
     			$member_ids = array();
@@ -401,7 +403,7 @@
 	    		else $member_ids = $member_intersection;
 	    		$association_conditions.= self::prepareQuery($association_conditions, $dimension, $member_ids, $object_types, $pg_ids, 'AND', $selection_members);
     	}
-    	$dims = Dimensions::findAll();
+    	$dims = Dimensions::instance()->findAll();
     	foreach ($dims as $dim){
     		if (!in_array($dim->getId(), $redefined_context) && !isset($properties[$dim->getId()]) && $dim->canContainObjects()){
     			$member_ids = array();

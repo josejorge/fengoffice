@@ -68,7 +68,7 @@ class ReportingController extends ApplicationController {
 
 
 		if (is_array(array_var($_POST, 'chart'))) {
-			$project = Projects::findById(array_var($chart_data, 'project_id'));
+			$project = Projects::instance()->findById(array_var($chart_data, 'project_id'));
 			if (!$project instanceof Project) {
 				flash_error(lang('project dnx'));
 				ajx_current("empty");
@@ -110,7 +110,7 @@ class ReportingController extends ApplicationController {
 			ajx_current("empty");
 			return;
 		}
-		$chart = ProjectCharts::findById(get_id());
+		$chart = ProjectCharts::instance()->findById(get_id());
 		if(!($chart instanceof ProjectChart)) {
 			flash_error(lang('chart dnx'));
 			ajx_current("empty");
@@ -146,8 +146,13 @@ class ReportingController extends ApplicationController {
 	 * @return null
 	 */
 	function index()
-	{
-		ajx_set_no_toolbar(true);
+	{           
+            /**
+                * Allow to override views when ajax request is sent
+            */
+            Hook::fire('override_action_view', $this, $ret);
+            ajx_set_no_toolbar(true);
+            
 	}
 
 	function list_all()
@@ -162,26 +167,50 @@ class ReportingController extends ApplicationController {
 	// ---------------------------------------------------
 
 	function total_task_times_p(){
-		//set params from config options
-		$report_data['date_type'] = user_config_option('timeReportDate');
-			
+		$report_params = array_var($_POST, 'params');
 		$now_date = DateTimeValueLib::now();
-		if (strtotime(user_config_option('timeReportDateStart'))){//this return null if date is 0000-00-00 00:00:00
-			$report_data['start_value'] = user_config_option('timeReportDateStart');
-		}else{
-			$dateStart = format_date($now_date, DATE_MYSQL, 0);//today
+
+		if (isset($report_params)) {
+			// if time list filters are sent then initialize the report filters with those values
+
+			$report_data['user'] = array_var($report_params, 'user');
+			$report_data['timeslot_type'] = array_var($report_params, 'timeslot_type');
+			$report_data['date_type'] = array_var($report_params, 'date_type');
+
+			$st = getDateValue(array_var($report_params, 'start_value'));
+			$dateStart = $st instanceof DateTimeValue ? $st->toMySQL() : DateTimeValueLib::makeFromString('1900-01-01')->toMySQL();
 			$report_data['start_value'] = $dateStart;
-		}
-		
-		if (strtotime(user_config_option('timeReportDateEnd'))){//this return null if date is 0000-00-00 00:00:00
-			$report_data['end_value'] = user_config_option('timeReportDateEnd');
-		}else{
-			$dateEnd = format_date($now_date, DATE_MYSQL, 0);//today
+			
+			$et = getDateValue(array_var($report_params, 'end_value'));
+			$dateEnd = $et instanceof DateTimeValue ? $et->toMySQL() : DateTimeValueLib::makeFromString('2099-12-31')->toMySQL();
 			$report_data['end_value'] = $dateEnd;
+
+			if (isset($report_params['invoicing_status'])) {
+				$report_data['invoicing_status'] = $report_params['invoicing_status'];
+			}
+
+		} else {
+			
+			//set params from config options
+			$report_data['date_type'] = user_config_option('timeReportDate');
+			
+			if (strtotime(user_config_option('timeReportDateStart'))){//this return null if date is 0000-00-00 00:00:00
+				$report_data['start_value'] = user_config_option('timeReportDateStart');
+			}else{
+				$dateStart = format_date($now_date, DATE_MYSQL, 0);//today
+				$report_data['start_value'] = $dateStart;
+			}
+			
+			if (strtotime(user_config_option('timeReportDateEnd'))){//this return null if date is 0000-00-00 00:00:00
+				$report_data['end_value'] = user_config_option('timeReportDateEnd');
+			}else{
+				$dateEnd = format_date($now_date, DATE_MYSQL, 0);//today
+				$report_data['end_value'] = $dateEnd;
+			}
+						
+			$report_data['user'] = user_config_option('timeReportPerson');
+			$report_data['timeslot_type'] = user_config_option('timeReportTimeslotType');
 		}
-					
-		$report_data['user'] = user_config_option('timeReportPerson');
-		$report_data['timeslot_type'] = user_config_option('timeReportTimeslotType');
 		
 		$report_data['show_estimated_time'] = user_config_option('timeReportShowEstimatedTime');
 		
@@ -196,6 +225,9 @@ class ReportingController extends ApplicationController {
 		$report_data['alt_group_by_3'] = array_var($altGroup, 2);
 		
 		$report_data['show_billing'] = user_config_option('timeReportShowBilling');
+		$report_data['show_cost'] = user_config_option('timeReportShowCost');
+		
+		$report_data['task_status'] = user_config_option('timeReportTaskStatus');
 		
 		$cp_ids = CustomProperties::getCustomPropertyIdsByObjectType(ProjectTasks::instance()->getObjectTypeId());
 		tpl_assign('has_custom_properties', count($cp_ids) > 0);
@@ -204,12 +236,12 @@ class ReportingController extends ApplicationController {
 		if (count($sel_member_ids) == 0) {
 			$users = Contacts::getAllUsers();
 		} else {
-			$users = allowed_users_in_context(Timeslots::instance()->getObjectTypeId(), active_context());
+			$users = allowed_users_in_context(Timeslots::instance()->getObjectTypeId(), active_context(), ACCESS_LEVEL_READ, "", false, true);
 		}
 		$_SESSION['total_task_times_report_data'] = $report_data;
 		tpl_assign('report_data', $report_data);
 		tpl_assign('users', $users);
-		tpl_assign('has_billing', BillingCategories::count() > 0);
+		tpl_assign('has_billing', BillingCategories::instance()->count() > 0 || Plugins::instance()->isActivePlugin('advanced_billing'));
 	}
 	
 	function total_task_times_print(){
@@ -223,11 +255,12 @@ class ReportingController extends ApplicationController {
 		} else {
 			$report_data = $_POST;
 		}
-
+                
 		$this->total_task_times($report_data, null, true);
 	}
 	
 	function total_task_times($report_data = null, $task = null, $csv = null){
+		//
 		if (!$report_data) {
 			$report_data = array_var($_POST, 'report');
 			set_user_config_option('timeReportDate', $report_data['date_type'] , logged_user()->getId());
@@ -247,6 +280,8 @@ class ReportingController extends ApplicationController {
 			set_user_config_option('timeReportPerson', $report_data['user'] , logged_user()->getId());
 			set_user_config_option('timeReportTimeslotType', $report_data['timeslot_type'] , logged_user()->getId());
 			set_user_config_option('timeReportShowBilling', isset($report_data['show_billing']) ? 1:0 , logged_user()->getId());
+			set_user_config_option('timeReportShowCost', isset($report_data['show_cost']) ? 1:0 , logged_user()->getId());
+			set_user_config_option('timeReportTaskStatus', $report_data['task_status'] , logged_user()->getId());
 			
 			$group = $report_data['group_by_1'].", ".$report_data['group_by_2'].", ".$report_data['group_by_3'];
 			$altGroup = $report_data['alt_group_by_1'].",".$report_data['alt_group_by_2'].",".$report_data['alt_group_by_3'];
@@ -256,7 +291,6 @@ class ReportingController extends ApplicationController {
 			
 			$_SESSION['total_task_times_report_data'] = $report_data;
 		}
-		
 		
 		if (array_var($_GET, 'export') == 'csv' || (isset($csv) && $csv == true)){
 			$context = build_context_array(array_var($_REQUEST, 'context'));
@@ -287,31 +321,36 @@ class ReportingController extends ApplicationController {
 			}
 		}
 	
-		$user = Contacts::findById(array_var($report_data, 'user'));
+		$user = Contacts::instance()->findById(array_var($report_data, 'user'));
 		
 		$now = DateTimeValueLib::now();
-		$now->advance(logged_user()->getTimezone()*3600, true);
+		$now->advance(logged_user()->getUserTimezoneValue(), true);
 		switch (array_var($report_data, 'date_type')){
 			case 1: //Today
 				$st = DateTimeValueLib::make(0,0,0,$now->getMonth(),$now->getDay(),$now->getYear());
-				$et = DateTimeValueLib::make(23,59,59,$now->getMonth(),$now->getDay(),$now->getYear());break;
+				$et = DateTimeValueLib::make(23,59,59,$now->getMonth(),$now->getDay(),$now->getYear());
+				break;
 			case 2: //This week
-				$monday = $now->getMondayOfWeek();
-				$nextMonday = $now->getMondayOfWeek()->add('w',1)->add('d',-1);
-				$st = DateTimeValueLib::make(0,0,0,$monday->getMonth(),$monday->getDay(),$monday->getYear());
-				$et = DateTimeValueLib::make(23,59,59,$nextMonday->getMonth(),$nextMonday->getDay(),$nextMonday->getYear());break;
+				$sunday = $now->getMondayOfWeek()->add('d',-1);
+				$nextSunday = $now->getMondayOfWeek()->add('w',1)->add('d',-2);
+				$st = DateTimeValueLib::make(0,0,0,$sunday->getMonth(),$sunday->getDay(),$sunday->getYear());
+				$et = DateTimeValueLib::make(23,59,59,$nextSunday->getMonth(),$nextSunday->getDay(),$nextSunday->getYear());
+				break;
 			case 3: //Last week
-				$monday = $now->getMondayOfWeek()->add('w',-1);
-				$nextMonday = $now->getMondayOfWeek()->add('d',-1);
-				$st = DateTimeValueLib::make(0,0,0,$monday->getMonth(),$monday->getDay(),$monday->getYear());
-				$et = DateTimeValueLib::make(23,59,59,$nextMonday->getMonth(),$nextMonday->getDay(),$nextMonday->getYear());break;
+				$sunday = $now->getMondayOfWeek()->add('w',-1)->add('d',-1);
+				$nextSunday = $now->getMondayOfWeek()->add('d',-2);
+				$st = DateTimeValueLib::make(0,0,0,$sunday->getMonth(),$sunday->getDay(),$sunday->getYear());
+				$et = DateTimeValueLib::make(23,59,59,$nextSunday->getMonth(),$nextSunday->getDay(),$nextSunday->getYear());
+				break;
 			case 4: //This month
 				$st = DateTimeValueLib::make(0,0,0,$now->getMonth(),1,$now->getYear());
-				$et = DateTimeValueLib::make(23,59,59,$now->getMonth(),1,$now->getYear())->add('M',1)->add('d',-1);break;
+				$et = DateTimeValueLib::make(23,59,59,$now->getMonth(),1,$now->getYear())->add('M',1)->add('d',-1);
+				break;
 			case 5: //Last month
 				$now->add('M',-1);
 				$st = DateTimeValueLib::make(0,0,0,$now->getMonth(),1,$now->getYear());
-				$et = DateTimeValueLib::make(23,59,59,$now->getMonth(),1,$now->getYear())->add('M',1)->add('d',-1);break;
+				$et = DateTimeValueLib::make(23,59,59,$now->getMonth(),1,$now->getYear())->add('M',1)->add('d',-1);
+				break;
 			case 6: //Date interval
 				$st = getDateValue(array_var($report_data, 'start_value'));
 				$st = $st->beginningOfDay();
@@ -319,13 +358,43 @@ class ReportingController extends ApplicationController {
 				$et = getDateValue(array_var($report_data, 'end_value'));
 				$et = $et->endOfDay();
 				break;
+			case 7: //first half of month
+				$st = DateTimeValueLib::make(0, 0, 0, $now->getMonth(), 1, $now->getYear());
+				$et = DateTimeValueLib::make(23, 59, 59, $now->getMonth(), 15, $now->getYear());
+				break;
+			case 8: //second half of month
+				$st = DateTimeValueLib::make(0, 0, 0, $now->getMonth(), 16, $now->getYear());
+				$et = DateTimeValueLib::make(23, 59, 59, $now->getMonth(), 1, $now->getYear())->add('M', 1)->add('d', -1);
+				break;
+			case 9: //First half of last month
+				$st = DateTimeValueLib::make(0, 0, 0, $now->getMonth(), 1, $now->getYear())->add('M', -1);
+				$et = DateTimeValueLib::make(23, 59, 59, $now->getMonth(), 15, $now->getYear())->add('M', -1);
+				break;
+			case 10: //Last half of last month
+				$st = DateTimeValueLib::make(0, 0, 0, $now->getMonth(), 16, $now->getYear())->add('M', -1);
+				$et = DateTimeValueLib::make(23, 59, 59, $now->getMonth(), 1, $now->getYear())->add('d', -1);
+				break;
+			case 11: //Yesterday
+				$st = DateTimeValueLib::make(0, 0, 0, $now->getMonth(), $now->getDay(), $now->getYear())->add('d', -1);
+				$et = DateTimeValueLib::make(23, 59, 59, $now->getMonth(), $now->getDay(), $now->getYear())->add('d', -1);
+				break;
+			case 12: //Year
+				$st = DateTimeValueLib::make(0, 0, 0, 1, 1, $now->getYear());
+				$et = DateTimeValueLib::make(23, 59, 59, $now->getMonth(), $now->getDay(), $now->getYear());
+				break;
+			default:
+				break;
 		}
 		
 		if ($st instanceof DateTimeValue) {
-			$st->add('h',-logged_user()->getTimezone());
+			$st->beginningOfDay();
+			$st->advance(-1 * logged_user()->getUserTimezoneValue(), true);
+			//$st->add('s',-logged_user()->getUserTimezoneValue());
 		}
 		if ($et instanceof DateTimeValue) {
-			$et->add('h',-logged_user()->getTimezone());
+			$et->endOfDay();
+			$et->advance(-1 * logged_user()->getUserTimezoneValue(), true);
+			//$et->add('s',-logged_user()->getUserTimezoneValue());
 		}
 				
 		$timeslotType = array_var($report_data, 'timeslot_type', 0);
@@ -383,6 +452,25 @@ class ReportingController extends ApplicationController {
 				
 			}
 		}
+
+		$timeslot_type = array_var($report_data, 'timeslot_type');
+		
+		if ($timeslotType != 1) {
+			$task_status = array_var($report_data, 'task_status', 'all');
+			if ($task_status == 'pending') {
+				$extra_conditions .= " AND IF(e.rel_object_id=0, true, (SELECT pt.completed_by_id FROM ".TABLE_PREFIX."project_tasks pt WHERE pt.object_id=e.rel_object_id)=0) ";
+			} else if ($task_status == 'completed') {
+				$extra_conditions .= " AND IF(e.rel_object_id=0, true, (SELECT pt.completed_by_id FROM ".TABLE_PREFIX."project_tasks pt WHERE pt.object_id=e.rel_object_id)>0) ";
+			}
+		}
+
+		if ($timeslot_type != 1) {
+			$task_status = lang(array_var($report_data, 'task_status', 'all'));
+		} else {
+			$task_status = null;
+		}
+
+		Hook::fire("more_total_task_times_extra_conditions", $report_data, $extra_conditions);
 		
 		$timeslots = Timeslots::getTaskTimeslots($context, null, $user, $st, $et, array_var($report_data, 'task_id', 0), $group_by, null, null, null, $timeslotType, $extra_conditions);
 		
@@ -398,19 +486,79 @@ class ReportingController extends ApplicationController {
 			if (in_array($text, array('contact_id', 'rel_object_id'))) $gb_criterias[] = array('type' => 'column', 'value' => $text);
 			else if (in_array($text, array('milestone_id', 'priority'))) $gb_criterias[] = array('type' => 'assoc_obj', 'fk' => 'rel_object_id', 'value' => $text);
 			else if (str_starts_with($text, 'dim_')) $gb_criterias[] = array('type' => 'dimension', 'value' => str_replace_first('dim_', '', $text));
+			else if ($text == 'first_level_task_only') $gb_criterias[] = array('type' => 'first_level_task_only', 'value' => $text);
 		}
 		$grouped_timeslots = groupObjects($gb_criterias, $timeslots);
 		
+		switch($timeslot_type){
+			case 0:
+				$timeslot_type = lang('task timeslots');
+				break;
+			case 1:
+				$timeslot_type = lang('time timeslots');
+				break;
+			case 2:
+				$timeslot_type = lang('all timeslots');
+				break;
+		}
+
+		$timeslots_grouped_by = array();
+		if ($timeslot_type == lang('task timeslots')){
+			$gbs = array();
+			Hook::fire('total_task_timeslots_group_by_criterias', null, $gbs);
+			$group_names = array(array_var($report_data, 'group_by_1'), array_var($report_data, 'group_by_2'), array_var($report_data, 'group_by_3'));
+			foreach($group_names as $group_name){
+				if($group_name == 'rel_object_id') {
+					$timeslots_grouped_by[] = lang('task');
+				} elseif($group_name == 'contact_id') {
+					$timeslots_grouped_by[] = lang('user');
+				} elseif($group_name == 'priority') {
+					$timeslots_grouped_by[] = lang('priority');
+				} elseif($group_name == 'milestone_id') {
+					$timeslots_grouped_by[] = lang('milestone');
+				} else {
+					foreach($gbs as $gb) {
+						if($group_name == $gb['val']){
+							$timeslots_grouped_by[] = $gb['name'];
+						}
+					}
+				}
+			}
+
+		} elseif($timeslot_type == lang('time timeslots') || $timeslot_type == lang('all timeslots')) {
+			$gbs = array();
+			Hook::fire('total_task_timeslots_group_by_criterias', null, $gbs);
+			$group_names = array(array_var($report_data, 'alt_group_by_1'), array_var($report_data, 'alt_group_by_2'), array_var($report_data, 'alt_group_by_3'));
+			foreach($group_names as $group_name){
+				if($group_name == 'rel_object_id') {
+					$timeslots_grouped_by[] = lang('task');
+				} elseif ($group_name == 'contact_id') {
+					$timeslots_grouped_by[] = lang('user');
+				} elseif ($group_name == 'first_level_task_only') {
+					$timeslots_grouped_by[] = lang('first level task only');
+				} else {
+					foreach($gbs as $gb) {
+						if($group_name == $gb['val']){
+							$timeslots_grouped_by[] = $gb['name'];
+						}
+					}
+				}
+			}
+		}
+		$timeslots_grouped_by = implode(", ", $timeslots_grouped_by);
+
 		tpl_assign('columns', $columns);
-		tpl_assign('timeslotsArray', array());                        
 		tpl_assign('grouped_timeslots', $grouped_timeslots);
 		if (array_var($report_data, 'date_type') == 6) {
-			$st->advance(logged_user()->getTimezone()*3600, true);
-			$et->advance(logged_user()->getTimezone()*3600, true);
+			$st->advance(logged_user()->getUserTimezoneValue(), true);
+			$et->advance(logged_user()->getUserTimezoneValue(), true);
 		}
 		tpl_assign('start_time', $st);
 		tpl_assign('end_time', $et);
 		tpl_assign('user', $user);
+		tpl_assign('timeslots_grouped_by', $timeslots_grouped_by);
+		tpl_assign('task_status', $task_status);
+		tpl_assign('timeslot_type', $timeslot_type);
 		tpl_assign('post', $report_data);
 		tpl_assign('title', lang('task time report'));
 		tpl_assign('allow_export', false);
@@ -429,7 +577,7 @@ class ReportingController extends ApplicationController {
 	function total_task_times_by_task_print(){
 		$this->setLayout("html");
 
-		$task = ProjectTasks::findById(get_id());
+		$task = ProjectTasks::instance()->findById(get_id());
 
 		$st = DateTimeValueLib::make(0,0,0,1,1,1900);
 		$et = DateTimeValueLib::make(23,59,59,12,31,2036);
@@ -470,8 +618,8 @@ class ReportingController extends ApplicationController {
 
 		$st = $start->beginningOfDay();
 		$et = $end->endOfDay();
-		$st = new DateTimeValue($st->getTimestamp() - logged_user()->getTimezone() * 3600);
-		$et = new DateTimeValue($et->getTimestamp() - logged_user()->getTimezone() * 3600);
+		$st = new DateTimeValue($st->getTimestamp() - logged_user()->getUserTimezoneValue());
+		$et = new DateTimeValue($et->getTimestamp() - logged_user()->getUserTimezoneValue());
 
 //		$timeslots = Timeslots::getTimeslotsByUserWorkspacesAndDate($st, $et, 'ProjectTasks', null, $workspacesCSV, array_var($report_data, 'task_id',0));
 		$timeslots = array();
@@ -492,12 +640,22 @@ class ReportingController extends ApplicationController {
 	//  Custom Reports
 	// ---------------------------------------------------
 
-	function add_custom_report(){
+	/**
+	 * This is the function that renders the form to add custom report
+	 * After the form is submitted, this function is called again with the report properties to save a new Report object.
+	 */
+	function add_custom_report(){ 
 		if (logged_user()->isGuest()) {
 			flash_error(lang('no access permissions'));
 			ajx_current("empty");
 			return;
 		}
+		$new_report = new Report();
+		if(!$new_report->canEdit(logged_user())) {
+			flash_error(lang('no access permissions'));
+			ajx_current("empty");
+			return;
+		} // if
 		tpl_assign('url', get_url('reporting', 'add_custom_report'));
 		$report_data = array_var($_POST, 'report');
 		if(is_array($report_data)){
@@ -522,7 +680,7 @@ class ReportingController extends ApplicationController {
 					if (str_starts_with($notAllowedMember, '-- req dim --')) flash_error(lang('must choose at least one member of', str_replace_first('-- req dim --', '', $notAllowedMember, $in)));
 					else trim($notAllowedMember) == "" ? flash_error(lang('you must select where to keep', lang('the report'))) : flash_error(lang('no context permissions to add', lang("report"), $notAllowedMember ));
 					ajx_current("empty");
-					return;
+					return; 
 				}
 				
 				$newReport->setObjectName($report_data['name']);
@@ -531,7 +689,7 @@ class ReportingController extends ApplicationController {
 				$newReport->setOrderBy($report_data['order_by']);
 				$newReport->setIsOrderByAsc($report_data['order_by_asc'] == 'asc');
 				$newReport->setIgnoreContext(array_var($report_data, 'ignore_context') == 'checked');
-				
+                                
 				try{
 					DB::beginWork();
 					$newReport->save();
@@ -541,19 +699,36 @@ class ReportingController extends ApplicationController {
 						foreach ($allowed_columns as $ac){
 							if ($condition['field_name'] == $ac['id']){
 								$newCondition = new ReportCondition();
+								$newCondition->setFromAttributes($condition);
 								$newCondition->setReportId($newReport->getId());
-								$newCondition->setCustomPropertyId($condition['custom_property_id']);
-								$newCondition->setFieldName($condition['field_name']);
-								$newCondition->setCondition($condition['condition']);
 								
 								$condValue = array_key_exists('value', $condition) ? $condition['value'] : '';
 								if($condition['field_type'] == 'boolean'){
-									$newCondition->setValue(array_key_exists('value', $condition) ? '1' : '0');
-								}else if($condition['field_type'] == 'date'){
+								    $newCondition->setValue(array_key_exists('value', $condition) ? $condition['value'] : '0');
+								}else if($condition['field_type'] == 'date' || $condition['field_type'] == 'datetime'){
 									if ($condValue != '') {
 										$dtFromWidget = DateTimeValueLib::dateFromFormatAndString(user_config_option('date_format'), $condValue);
+
+										if($condition['field_type'] == 'date'){
 										$newCondition->setValue(date("m/d/Y", $dtFromWidget->getTimestamp()));
+                                        }elseif ($condition['field_type'] == 'datetime'){
+                                            $newCondition->setValue(date("m/d/Y H:i:s", $dtFromWidget->getTimestamp()));
+                                        }
 									}
+								}else if($condition['field_type'] == 'date_range_time_range'){
+
+									$from = getDateValue($condition['value']['from']);
+									$to = getDateValue($condition['value']['to']);
+									$from_time = getTimeValue($condition['value']['from_time']);
+									$to_time = getTimeValue($condition['value']['to_time']);
+									
+									$from_str = $from instanceof DateTimeValue ? $from->toMySQL() : '';
+									$to_str = $to instanceof DateTimeValue ? $to->toMySQL() : '';
+									$ft = is_array($from_time) ? $from_time['hours'].':'.$from_time['mins'] : '';
+									$tt = is_array($to_time) ? $to_time['hours'].':'.$to_time['mins'] : '';
+									
+									$newCondition->setValue(json_encode(array('from' => $from_str, 'to' => $to_str, 'from_time' => $ft, 'to_time' => $tt)));
+									
 								}else{
 									$newCondition->setValue($condValue);
 								}
@@ -580,7 +755,9 @@ class ReportingController extends ApplicationController {
 					$no_need_to_add_to_members = count($member_ids) == 0 && (logged_user()->isManager() || logged_user()->isAdminGroup());
 					if (!$no_need_to_add_to_members) {
 						$object_controller = new ObjectController();
-						$object_controller->add_to_members($newReport, $member_ids);
+						if (!is_null($member_ids)) {
+							$object_controller->add_to_members($newReport, $member_ids);
+						}
 					} else {
 						$newReport->addToSharingTable();
 					}
@@ -605,17 +782,30 @@ class ReportingController extends ApplicationController {
 		Hook::fire('custom_reports_object_types', array('object_types' => $object_types), $object_types);
 		
 		foreach ($object_types as $ot) {
-			$types[] = array($ot->getId(), lang($ot->getName()));
+		    
+			if ( $ot->getType() == 'dimension_object' ){
+			    $dimension_ids = DimensionObjectTypes::getDimensionIdsByObjectTypeId($ot->getId());
+			    if ( count($dimension_ids) > 0 ){
+			        $types[] = array($ot->getId(), Members::getTypeNameToShowByObjectType($dimension_ids[0], $ot->getId()) );
+			    }			    
+			}else{
+			    $types[] = array($ot->getId(), lang($ot->getName()));
+			}
+		    
 		}
 		if ($selected_type != '')
 			tpl_assign('allowed_columns', $this->get_allowed_columns($selected_type));
 		
 		tpl_assign('object_types', $types);
 		tpl_assign('selected_type', $selected_type);
-		$new_report = new Report();
+
 		tpl_assign('object', $new_report);
 	}
 
+	/**
+	 * This is the function that renders the form to edit a custom report
+	 * After the form is submitted, this function is called again with the report properties to save the edited Report object.
+	 */
 	function edit_custom_report(){
 		if (logged_user()->isGuest()) {
 			flash_error(lang('no access permissions'));
@@ -638,7 +828,6 @@ class ReportingController extends ApplicationController {
 				foreach ($report_data as $k => &$v) {
 					$v = remove_scripts($v);
 				}
-				
 				$member_ids = json_decode(array_var($_POST, 'members'));
 				
 				DB::beginWork();
@@ -648,7 +837,9 @@ class ReportingController extends ApplicationController {
 				$report->setOrderBy($report_data['order_by']);
 				$report->setIsOrderByAsc($report_data['order_by_asc'] == 'asc');
 				$report->setIgnoreContext(array_var($report_data, 'ignore_context') == 'checked');
-				
+				/* Commented out to use later
+				Hook::fire('set_additional_report_values', array('report_data'=>$report_data), $report);
+				*/
 				$report->save();				
 					
 				$conditions = array_var($_POST, 'conditions');
@@ -665,26 +856,49 @@ class ReportingController extends ApplicationController {
 						$newCondition->delete();
 						continue;
 					}
+					$newCondition->setFromAttributes($condition);
 					$newCondition->setReportId($report_id);
-					$custom_prop_id = isset($condition['custom_property_id']) ? $condition['custom_property_id'] : 0;
-					$newCondition->setCustomPropertyId($custom_prop_id);
-					$newCondition->setFieldName($condition['field_name']);
-					$newCondition->setCondition($condition['condition']);
-					if($condition['field_type'] == 'boolean'){
-						$newCondition->setValue(isset($condition['value']) && $condition['value'] ? '1' : '0');
-					}else if($condition['field_type'] == 'date'){
-						if (array_var($condition, 'value') == '') $newCondition->setValue('');
-						else {
-							$dtFromWidget = DateTimeValueLib::dateFromFormatAndString(user_config_option('date_format'), $condition['value']);
-							$newCondition->setValue(date("m/d/Y", $dtFromWidget->getTimestamp()));
+
+					if (isset($condition['field_type'])) {
+						if ($condition['field_type'] == 'boolean') {
+							$newCondition->setValue(array_key_exists('value', $condition) ? $condition['value'] : '0');
+						} else if ($condition['field_type'] == 'date' || $condition['field_type'] == 'datetime') {
+							if (array_var($condition, 'value') == '')
+								$newCondition->setValue('');
+							else {
+								$dtFromWidget = DateTimeValueLib::dateFromFormatAndString(user_config_option('date_format'), $condition['value']);
+
+								if ($condition['field_type'] == 'date') {
+									$newCondition->setValue(date("m/d/Y", $dtFromWidget->getTimestamp()));
+								} elseif ($condition['field_type'] == 'datetime') {
+									$newCondition->setValue(date("m/d/Y H:i:s", $dtFromWidget->getTimestamp()));
+								}
+							}
+						} else if ($condition['field_type'] == 'date_range_time_range') {
+
+							$from = getDateValue($condition['value']['from']);
+							$to = getDateValue($condition['value']['to']);
+							$from_time = getTimeValue($condition['value']['from_time']);
+							$to_time = getTimeValue($condition['value']['to_time']);
+
+							$from_str = $from instanceof DateTimeValue ? $from->toMySQL() : '';
+							$to_str = $to instanceof DateTimeValue ? $to->toMySQL() : '';
+							$ft = is_array($from_time) ? $from_time['hours'] . ':' . $from_time['mins'] : '';
+							$tt = is_array($to_time) ? $to_time['hours'] . ':' . $to_time['mins'] : '';
+
+							$newCondition->setValue(json_encode(array('from' => $from_str, 'to' => $to_str, 'from_time' => $ft, 'to_time' => $tt)));
+
+						} else {
+							$newCondition->setValue(isset($condition['value']) ? $condition['value'] : '');
 						}
-					}else{
+					} else {
 						$newCondition->setValue(isset($condition['value']) ? $condition['value'] : '');
+
 					}
 					$newCondition->setIsParametrizable(isset($condition['is_parametrizable']));
 					$newCondition->save();
 				}
-				ReportColumns::delete('report_id = ' . $report_id);
+				ReportColumns::instance()->delete('report_id = ' . $report_id);
 				$columns = array_var($_POST, 'columns');
 				
 				asort($columns); //sort the array by column order
@@ -692,17 +906,26 @@ class ReportingController extends ApplicationController {
 					if ($order > 0) {
 						$newColumn = new ReportColumn();
 						$newColumn->setReportId($report_id);
-						if(is_numeric($column)){
-							$newColumn->setCustomPropertyId($column);
-						}else{
-							$newColumn->setFieldName($column);
-						}
-						$newColumn->save();
+
+						if (str_starts_with($column,'group_cp_')){
+                            $list_of_terms = explode('_',$column);
+                            $newColumn->setCustomPropertyId($list_of_terms[2]);
+                            $newColumn->setFieldName($column);
+                        }else{
+                            if(is_numeric($column)){
+                                $newColumn->setCustomPropertyId($column);
+                            }else{
+                                $newColumn->setFieldName($column);
+                            }
+                        }
+                        $newColumn->save();
 					}
 				}
-				
+
 				$object_controller = new ObjectController();
-				$object_controller->add_to_members($report, $member_ids);
+				if (!is_null($member_ids) && count($member_ids) > 0) {
+					$object_controller->add_to_members($report, $member_ids);
+				}
 					
 				DB::commit();
 				flash_success(lang('custom report updated'));
@@ -725,6 +948,9 @@ class ReportingController extends ApplicationController {
 					'order_by_asc' => $report->getIsOrderByAsc(),
 					'ignore_context' => $report->getIgnoreContext(),
 				);
+				/* Commented out to use later
+				Hook::fire('additional_report_data_for_view', array('report'=>$report), $report_data);
+				*/
 				tpl_assign('report_data', $report_data);
 				$conditions = ReportConditions::getAllReportConditions($report_id);
 				tpl_assign('conditions', $conditions);
@@ -732,7 +958,11 @@ class ReportingController extends ApplicationController {
 				$colIds = array();
 				foreach($columns as $col){
 					if($col->getCustomPropertyId() > 0){
-						$colIds[] = $col->getCustomPropertyId();
+                        if (str_starts_with($col->getFieldName(),'group_cp_')){
+                            $colIds[] = $col->getFieldName();
+                        }else{
+				    		$colIds[] = $col->getCustomPropertyId();
+                        }
 					}else{
 						$colIds[] = $col->getFieldName();
 					}
@@ -754,91 +984,353 @@ class ReportingController extends ApplicationController {
 			
 			tpl_assign('object_types', $types);
 			tpl_assign('selected_type', $selected_type);
+                        
 			tpl_assign('object', $report);
 			
 			tpl_assign('allowed_columns', $this->get_allowed_columns($selected_type), true);
+
+			evt_add("edit report loaded", array());
 		}
 	}
 
-	function view_custom_report(){
-		$report_id = array_var($_GET, 'id');
-		if (array_var($_GET, 'replace')) {
-			ajx_replace();
+	function edit_default_report(){
+
+		if (logged_user()->isGuest()) {
+			flash_error(lang('no access permissions'));
+			ajx_current("empty");
+			return;
 		}
-		tpl_assign('id', $report_id);
-		if(isset($report_id)){
-			$report = Reports::getReport($report_id);
-			$conditions = ReportConditions::getAllReportConditions($report_id);
-			$paramConditions = array();
-			foreach($conditions as $condition){
-				if($condition->getIsParametrizable()){
-					$paramConditions[] = $condition;
+		$report_id = array_var($_GET, 'id');
+		$report = Reports::getReport($report_id);
+
+		if(!$report->canEdit(logged_user())) {
+			flash_error(lang('no access permissions'));
+			ajx_current("empty");
+			return;
+		} 
+
+		if(is_array(array_var($_POST, 'report'))) {
+			try{
+				ajx_current("empty");
+				$report_data = array_var($_POST, 'report');
+				foreach ($report_data as $k => &$v) {
+					$v = remove_scripts($v);
 				}
-			}
-			
-			$ot = ObjectTypes::findById($report->getReportObjectTypeId());
-			if (class_exists($ot->getHandlerClass())) {
-				eval('$managerInstance = ' . $ot->getHandlerClass() . "::instance();");
-				$externalCols = $managerInstance->getExternalColumns();
-			} else {
-				$externalCols = array();
-			}
-			$externalFields = array();
-			foreach($externalCols as $extCol){
-				$externalFields[$extCol] = $this->get_ext_values($extCol, $report->getReportObjectTypeId());
-			}
-			$params = array_var($_GET, 'params');
-			if(count($paramConditions) > 0 && !isset($params)){
-				$this->setTemplate('custom_report_parameters');
-				tpl_assign('model', $report->getReportObjectTypeId());
-				tpl_assign('title', $report->getObjectName());
-				tpl_assign('description', $report->getDescription());
-				tpl_assign('conditions', $paramConditions);
-				tpl_assign('external_fields', $externalFields);
-			}else{
-				$this->setTemplate('report_wrapper');
-				tpl_assign('template_name', 'view_custom_report');
-				tpl_assign('title', $report->getObjectName());
-				tpl_assign('genid', gen_id());
-				$parameters = '';
-				if(isset($params)){
-					foreach($params as $id => $value){
-						$parameters .= '&params['.$id.']='.$value;
-					}
+				$member_ids = json_decode(array_var($_POST, 'members'));
+
+				DB::beginWork();
+				$report->setObjectName($report_data['name']);
+				$report->setDescription($report_data['description']);
+				$report->setIgnoreContext(array_var($report_data, 'ignore_context') == 'checked');
+				$report->save();
+				
+				$object_controller = new ObjectController();
+				if (!is_null($member_ids)) {
+					$object_controller->add_to_members($report, $member_ids);
 				}
-				tpl_assign('parameterURL', $parameters);
-				$offset = array_var($_GET, 'offset');
-				if(!isset($offset)) $offset = 0;
-				$limit = array_var($_GET, 'limit');
-				if(!isset($limit)) $limit = 50;
-				$order_by = array_var($_GET, 'order_by');
-				if(!isset($order_by)) $order_by = '';
-				tpl_assign('order_by', $order_by);
-				$order_by_asc = array_var($_GET, 'order_by_asc');
-				if(!isset($order_by_asc)) $order_by_asc = null;
-				tpl_assign('order_by_asc', $order_by_asc);
-				$results = Reports::executeReport($report_id, $params, $order_by, $order_by_asc, $offset, $limit);
-				if(!isset($results['columns'])) $results['columns'] = array(); 
-				tpl_assign('columns', $results['columns']);
-				tpl_assign('db_columns', $results['db_columns']);
-				if(!isset($results['rows'])) $results['rows'] = array();
-				tpl_assign('rows', $results['rows']);
-				if(!isset($results['pagination'])) $results['pagination'] = '';
-				tpl_assign('pagination', $results['pagination']);
-				tpl_assign('types', self::get_report_column_types($report_id));
-				tpl_assign('post', $_REQUEST);
-				$ot = ObjectTypes::findById($report->getReportObjectTypeId());
-				tpl_assign('model', $ot->getHandlerClass());
-				tpl_assign('description', $report->getDescription());
-				tpl_assign('conditions', $conditions);
-				tpl_assign('parameters', $params);
+
+				DB::commit();
+				flash_success(lang('custom report updated'));
+				ajx_current('back');
+
+			} catch(Exception $e) {
+				DB::rollback();
+				flash_error($e->getMessage());
+				ajx_current("empty");
+			} // try
+		} else {
+			$this->setTemplate('edit_default_report');
+			tpl_assign('url', get_url('reporting', 'edit_default_report', array('id' => $report_id)));
+			if($report instanceof Report){
 				tpl_assign('id', $report_id);
-				tpl_assign('to_print', false);
+				$report_data = array(
+					'name' => Localization::instance()->lang_exists($report->getObjectName()) ? lang($report->getObjectName()) : $report->getObjectName(),
+					'description' => Localization::instance()->lang_exists($report->getDescription()) ? lang($report->getDescription()) : $report->getDescription(),
+					'order_by' => $report->getOrderBy(),
+					'order_by_asc' => $report->getIsOrderByAsc(),
+					'ignore_context' => $report->getIgnoreContext(),
+				);
+				tpl_assign('report_data', $report_data);
 			}
-			
-			ApplicationReadLogs::createLog($report, ApplicationReadLogs::ACTION_READ);
+			tpl_assign('object', $report);
 		}
 	}
+
+	function view_custom_report($report_id = null, $view_attributes = null, $params = null,$to_print = false) {
+		if (!$report_id) {
+			$report_id = array_var($_REQUEST, 'id');
+		}
+		
+		if (array_var($_REQUEST, 'replace')) {
+			ajx_replace();
+		}
+		$report = Reports::getReport($report_id);
+		if (!$report instanceof Report) {
+			flash_error("report dnx");
+			ajx_current("empty");
+			return;
+		}
+		$show_report = true;
+		/* Commented out to use later
+		Hook::fire('has_permissions_to_see_report', array('report'=>$report), $show_report);
+		*/
+		if(!$show_report){
+			flash_error(lang('no access permissions'));
+			ajx_current("empty");
+			return;
+		}
+		tpl_assign('id', $report_id);
+		
+			
+		$conditions = ReportConditions::getAllReportConditions($report_id);
+		$paramConditions = array();
+		foreach($conditions as $condition){
+			if($condition->getIsParametrizable()){
+				$paramConditions[] = $condition;
+			}
+		}
+		
+		$ot = ObjectTypes::instance()->findById($report->getReportObjectTypeId());
+		if (class_exists($ot->getHandlerClass())) {
+			eval('$managerInstance = ' . $ot->getHandlerClass() . "::instance();");
+			$externalCols = $managerInstance->getExternalColumns();
+			
+			if ($ot->getName() == 'mail') {
+				foreach ($externalCols as $k => $ecol) {
+					if (in_array($ecol, array('to','cc','bcc','body_plain','body_html'))) unset($externalCols[$k]);
+				}
+			}
+			
+		} else {
+			$externalCols = array();
+		}
+		
+		$cps = CustomProperties::getAllCustomPropertiesByObjectType($report->getReportObjectTypeId());
+		foreach ($cps as $cp) {
+			if ($cp->getType() == 'contact' || $cp->getType() == 'user') {
+				$externalCols[] = $cp->getId();
+			}
+		}
+		
+		tpl_assign('object_type', $ot);
+		$externalFields = array();
+		foreach($externalCols as $extCol){
+			$externalFields[$extCol] = $this->get_ext_values($extCol, $report->getReportObjectTypeId());
+		}
+		if (!$params) {
+			$params = array_var($_REQUEST, 'params');
+		}
+		if (count($paramConditions) > 0 && !$params) {
+			
+			$this->setTemplate('custom_report_parameters');
+			tpl_assign('model', $report->getReportObjectTypeId());
+			tpl_assign('title', $report->getObjectName());
+			tpl_assign('description', $report->getDescription());
+			tpl_assign('conditions', $paramConditions);
+			tpl_assign('external_fields', $externalFields);
+			
+		} else {
+			
+			ajx_set_no_toolbar(true);
+			
+			$parametersUrl = '';
+			if (!is_array($params)) $params = json_decode($params, true);
+			if ($params) {
+				foreach($params as $id => $value){
+					$parametersUrl .= '&params['.$id.']='.$value;
+				}
+			}
+			
+			$offset = array_var($_REQUEST, 'offset', 0);
+			$limit = array_var($_REQUEST, 'limit', 50);
+			$order_by = array_var($_REQUEST, 'order_by', '');
+			$order_by_asc = array_var($_REQUEST, 'order_by_asc', false);
+			
+			$results = Reports::executeReport($report_id, $params, $order_by, $order_by_asc, $offset, $limit);
+			$ot = ObjectTypes::instance()->findById($report->getReportObjectTypeId());
+
+			tpl_assign('results', $results);
+			tpl_assign('model', $ot->getHandlerClass());
+			tpl_assign('types', self::get_report_column_types($report_id));
+			tpl_assign('post', $_REQUEST);
+			tpl_assign('order_by', $order_by);
+			tpl_assign('order_by_asc', $order_by_asc);
+			tpl_assign('description', $report->getDescription());
+			tpl_assign('conditions', $conditions);
+			tpl_assign('parameters', $params);
+			tpl_assign('disabled_params', array_var($_REQUEST, 'disabled_params'));
+			tpl_assign('parameterURL', $parametersUrl);
+			tpl_assign('id', $report_id);
+			tpl_assign('to_print', $to_print);
+			
+			$this->setTemplate('report_wrapper');
+			tpl_assign('template_name', 'view_custom_report');
+			tpl_assign('title', $report->getObjectName());
+			tpl_assign('genid', gen_id());
+			
+			if ($view_attributes) {
+				foreach ($view_attributes as $k => $v) tpl_assign($k, $v);
+			}
+		
+			ApplicationReadLogs::createLog($report, ApplicationReadLogs::ACTION_READ);
+			
+			return $results;
+		}
+	}
+	
+	
+	function print_custom_report() {
+		ajx_current("empty");
+		set_time_limit(0);
+		$old_memory_limit = ini_get('memory_limit');
+		if (php_config_value_to_bytes($old_memory_limit) < 512 *1024*1024) {
+			ini_set("memory_limit", "512M");
+		}
+		
+		$report_id = array_var($_GET, 'id');
+
+		$report = Reports::getReport($report_id);
+		if (!$report instanceof Report) {
+			flash_error("report dnx");
+			return;
+		}
+
+		$filename = "report_print_".gen_id().".html";
+		$filepath = ROOT . "/tmp/$filename";
+		
+		$params = array();
+		$params_str = array_var($_REQUEST, 'params');
+		if (is_array($params_str)) $params = $params_str;
+		else if ($params_str != '') $params = json_decode(str_replace("'", '"',$params_str), true);
+		
+		$disabled_params = array_var($_REQUEST, 'disabled_params');
+		
+		$_GET['limit'] = 0;
+		$_REQUEST['limit'] = 0;
+		$results = $this->view_custom_report($report_id, null, $params);
+		
+		ob_start();
+		custom_report_info_blocks(array('id' => $report_id, 'results' => $results, 'parameters' => $params, 'disabled_params' => $disabled_params));
+		$html = ob_get_clean();
+		
+		$html .= report_table_html($results, $report, '', true);
+		
+		ajx_extra_data(array('html' => $html));
+		
+	}
+	
+	function export_custom_report_csv() {
+		ajx_current("empty");
+		set_time_limit(0);
+		$old_memory_limit = ini_get('memory_limit');
+		if (php_config_value_to_bytes($old_memory_limit) < 512 *1024*1024) {
+			ini_set("memory_limit", "512M");
+		}
+		
+		$report_id = array_var($_GET, 'id');
+		
+		$report = Reports::getReport($report_id);
+		if (!$report instanceof Report) {
+			flash_error("report dnx");
+			return;
+		}
+		
+		$filename = $report->getName().".csv";
+		$filepath = ROOT . "/tmp/$filename";
+		
+		$params_str = array_var($_REQUEST, 'report_params');
+		if ($params_str) $params = json_decode(str_replace("'", '"',$params_str), true);
+		else $params = array();
+		
+		$_GET['limit'] = 0;
+		$_REQUEST['limit'] = 0;
+		$results = $this->view_custom_report($report_id, null, $params);
+		
+		$csv = report_table_csv($results, $report);
+		
+		file_put_contents($filepath, $csv);
+		
+		ajx_extra_data(array("filename" => $filename));
+		
+	}
+	
+	function export_custom_report_pdf() {
+		ajx_current("empty");
+		set_time_limit(0);
+		$old_memory_limit = ini_get('memory_limit');
+		if (php_config_value_to_bytes($old_memory_limit) < 512 *1024*1024) {
+			ini_set("memory_limit", "512M");
+		}
+		
+		$report_id = array_var($_GET, 'id');
+		
+		$report = Reports::getReport($report_id);
+		if (!$report instanceof Report) {
+			flash_error("report dnx");
+			return;
+		}
+		
+		$html_filename = gen_id().'pdf.html';
+		$html_filepath = ROOT . "/tmp/$html_filename";
+		
+		$params = array();
+		$params_str = array_var($_REQUEST, 'report_params');
+		if ($params_str) $params = json_decode(str_replace("'", '"',$params_str), true);
+		
+		$disabled_params = array_var($_REQUEST, 'disabled_params');
+		
+		$_GET['limit'] = 0;
+		$_REQUEST['limit'] = 0;
+		$results = $this->view_custom_report($report_id, null, $params,true);
+		
+		// include all css
+		$html = stylesheet_tag('website.css');
+		$css_html = "";
+		Hook::fire('additional_report_print_css', null, $css_html);
+		if ($css_html) $html .= $css_html;
+		
+		// to avoid thead and tbody overlapping
+		$html .= stylesheet_tag('og/pdf_export.css');
+		
+		// title html
+		// $html .= '<div class="report-print-header"><div class="title-container"><h1>'.clean($report->getName()).'</h1></div></div><div class="clear"></div>';
+		
+		ob_start();
+		// custom_report_info_blocks(array('id' => $report_id, 'results' => $results, 'parameters' => $params, 'disabled_params' => $disabled_params));
+
+		custom_report_info_blocks_pdf(array('name_report'=>clean($report->getName()),'id' => $report_id, 'results' => $results, 'parameters' => $params, 'disabled_params' => $disabled_params));
+
+		$html .= ob_get_clean();
+		
+		// build html
+		$html .= report_table_html($results, $report, '', true);
+
+		// add more content to the resulting html (example: signature, etc)
+		Hook::fire("export_report_pdf_more_content", array('report' => $report, 'results' => $results), $html);
+
+		$html = '<div id="print-pdf">'. $html .'</div>';
+		file_put_contents($html_filepath, $html);
+
+		$html_header_footer = array();
+		// build header
+		$html_header_footer['header'] = '<div style="height: 35px; color: white;">.</div>';
+		// build footer
+		$company_mini_logo = get_image_url("small_logo_feng.png");
+		$html_header_footer['footer'] = '<div style="text-align: right; font-size: 15px; height: 20px; font-family: "Open Sans",Arial,sans-serif;"> 
+		<div style="padding-top: 2px; display: inline-block; padding-left: 10px; padding-right: 3px;"> Powered by </div> 
+			<div style="background: url(\''.$company_mini_logo.'\'); background-size: 70px 20px; width: 70px; height: 20px; display: inline-block; color: white;">.</div> 
+		</div>';
+		// convert html to pdf
+		$orientation = array_var($_REQUEST, 'pdfPageLayout') == 'L' ? 'Landscape' : 'Portrait';
+		$page_size = array_var($_REQUEST, 'pdfPageSize');
+		
+		$pdf_data = convert_to_pdf($html, $orientation, str_replace(" ", "_", $report->getObjectName()), $page_size, '', $html_header_footer);
+		$real_pdf_filename = $pdf_data['name'];
+		
+		ajx_extra_data(array("filename" => $real_pdf_filename, 'size' => $pdf_data['size']));
+	}
+	
+	
 
 	function view_custom_report_print(){
 		$this->setLayout("html");
@@ -870,7 +1362,7 @@ class ReportingController extends ApplicationController {
 			tpl_assign('types', self::get_report_column_types($report_id));
 			tpl_assign('template_name', 'view_custom_report');
 			tpl_assign('title', $report->getObjectName());
-			$ot = ObjectTypes::findById($report->getReportObjectTypeId());
+			$ot = ObjectTypes::instance()->findById($report->getReportObjectTypeId());
 			tpl_assign('model', $ot->getHandlerClass());
 			tpl_assign('description', $report->getDescription());
 			$conditions = ReportConditions::getAllReportConditions($report_id);
@@ -880,7 +1372,8 @@ class ReportingController extends ApplicationController {
 			tpl_assign('to_print', true);
 			
 			if (array_var($_POST, 'exportPDF')) {
-				tpl_assign('pdf_export', true);
+				$this->setLayout("empty");
+				tpl_assign('save_html_in_file', true);
 				$html_filename = ROOT.'/tmp/'.gen_id().'pdf.html';
 				$pdf_filename = $report->getObjectName() . '.pdf';
 				tpl_assign('html_filename', $html_filename);
@@ -906,18 +1399,25 @@ class ReportingController extends ApplicationController {
 		if(array_var($_REQUEST, 'file_type')){
 			$file_type = array_var($_REQUEST, 'file_type');
 		}
+		if(array_var($_REQUEST, 'file_size')){
+			$size = array_var($_REQUEST, 'file_size');
+		}
 		
-		$file_path = "tmp/".$file_name;
-		$size = filesize($file_path);
+		$file_path = ROOT."/tmp/".$file_name;
+		if(!file_exists($file_path)) {
+			exit;
+		}
+		
+		if (!isset($size)) $size = filesize($file_path);
 		
 		//user current date
 		$now_date = DateTimeValueLib::now();
-		$now_date->advance(logged_user()->getTimezone() * 3600);
+		$now_date->advance(logged_user()->getUserTimezoneValue());
 		$now = $now_date->format('Y-m-d_H:i:s');
 		
-		download_file($file_path, $file_type, $file_name, $size, true);
+		download_file($file_path, $file_type, $file_name, true, true, $size);
 		
-		unlink($file_path);
+	//	unlink($file_path);
 		
 		die();
 	}
@@ -925,7 +1425,7 @@ class ReportingController extends ApplicationController {
 	function generateCSVReport($report, $results){
 		$contents = "";
 		
-		$ot = ObjectTypes::findById($report->getReportObjectTypeId());
+		$ot = ObjectTypes::instance()->findById($report->getReportObjectTypeId());
 		Hook::fire("report_header", $ot, $results['columns']);
 		
 		$types = self::get_report_column_types($report->getId());
@@ -957,7 +1457,7 @@ class ReportingController extends ApplicationController {
 	function generatePDFReport(Report $report, $results){
 		
 		$types = self::get_report_column_types($report->getId());
-		$ot = ObjectTypes::findById($report->getReportObjectTypeId());
+		$ot = ObjectTypes::instance()->findById($report->getReportObjectTypeId());
 		if (class_exists($ot->getHandlerClass())) {
 			eval('$managerInstance = ' . $ot->getHandlerClass() . "::instance();");
 			$externalCols = $managerInstance->getExternalColumns();
@@ -1164,8 +1664,8 @@ class ReportingController extends ApplicationController {
 	 * Splits a value in pieces of maximum length = $length.
 	 * The split point is the last position of a space char that is before the piece length 
 	 *
-	 * @param $value: value to split
-	 * @param $length: max length of each piece
+	 * @param $value: string value to split
+	 * @param $length: int max length of each piece
 	 * @return array containing the pieces after splitting the value
 	 */
 	function split_column_value($value, $length) {
@@ -1255,7 +1755,7 @@ class ReportingController extends ApplicationController {
 				if ($cp->getType() != 'table')
 					$fields[] = array('id' => $cp->getId(), 'name' => $cp->getName(), 'type' => $cp->getType(), 'values' => $cp->getValues(), 'multiple' => $cp->getIsMultipleValues());
 			}
-			$ot = ObjectTypes::findById($object_type);
+			$ot = ObjectTypes::instance()->findById($object_type);
 			
 			if (class_exists($ot->getHandlerClass())) {
 				eval('$managerInstance = ' . $ot->getHandlerClass() . "::instance();");
@@ -1289,35 +1789,95 @@ class ReportingController extends ApplicationController {
 		return $fields;
 	}
 	
-	function get_object_column_list(){
-		$allowed_columns = $this->get_allowed_columns(array_var($_GET, 'object_type'));
+	function get_object_column_list(){ 
+		$option_groups = null;
+		$object_type = array_var($_GET, 'object_type');
+		$allowed_columns = $this->get_allowed_columns($object_type);
 		$columns = array_var($_GET, 'columns', array());
-		
-		if (array_var($_GET, 'object_type') == Timeslots::instance()->getObjectTypeId()) {
+		if ($object_type == Timeslots::instance()->getObjectTypeId()) {
 			$task_ot = ObjectTypes::findByName('task');
 			$task_columns = $this->get_allowed_columns($task_ot->getId());
 			
-			$columns = array_var($_GET, 'columns', array());
+			$ts_group_count = count($allowed_columns);
+			$task_columns_count = 0;
+
 			foreach ($task_columns as $t) {
-				if (str_starts_with($t['id'], 'dim_') || str_starts_with($t['id'], 'repeat_')) continue;
-				$allowed_columns[] = $t;
+				if (str_starts_with($t['id'], 'dim_') || str_starts_with($t['id'], 'repeat_')
+						|| in_array($t['id'], array('id','name', 'project_number'))) continue;
+						$allowed_columns[] = $t;
+						$task_columns_count++;
 			}
+			
+			$contact_ot = ObjectTypes::findByName('contact');
+			$contact_columns = $this->get_allowed_columns($contact_ot->getId());
+			
+			$contact_columns_count = 0;
+			foreach ($contact_columns as $t) {
+				if (str_starts_with($t['id'], 'dim_') || str_starts_with($t['id'], 'repeat_')
+						|| in_array($t['id'], array('id','name', 'project_number'))) continue;
+				
+				// only custom properties for now
+				if (is_numeric($t['id'])) { 
+					$allowed_columns[] = $t;
+					$contact_columns_count++;
+				}
+			}
+			
+			$option_groups = array(
+				array('count' => $ts_group_count, 'name' => lang('timeslot').' '.lang('columns')),
+				array('count' => $task_columns_count, 'name' => lang('task').' '.lang('columns')),
+				array('count' => $contact_columns_count, 'name' => lang('contact').' '.lang('columns')),
+			);
 		}
 		
+		$ret = array($allowed_columns,$option_groups);
+		Hook::fire('get_allow_columns_for_reports', array('object_type' => $object_type, 'columns' => $columns),$ret);
+		$allowed_columns = $ret[0];
+		$option_groups = $ret[1];
+
+
+		$ret = array($allowed_columns,$option_groups);
+		Hook::fire('get_allow_taxes_row_for_reports', array('object_type' => $object_type, 'columns' => $columns),$ret);
+		$allowed_columns = $ret[0];
+		$option_groups = $ret[1];
+
+		Hook::fire('remove_billing_and_cost_columns_from_list', array('object_type' => $object_type),$allowed_columns);
+
+		$this->sort_custom_report_columns_using_option_groups($allowed_columns, $option_groups);
+		tpl_assign('option_groups', $option_groups);
 		tpl_assign('allowed_columns', $allowed_columns);
 		tpl_assign('columns', explode(',', $columns));
 		tpl_assign('order_by', array_var($_GET, 'orderby'));
 		tpl_assign('order_by_asc', array_var($_GET, 'orderbyasc'));
 		tpl_assign('genid', array_var($_GET, 'genid'));
+
+		evt_add("end colum list", array());
 		
 		$this->setLayout("html");
 		$this->setTemplate("column_list");
 	}
 
+	function sort_custom_report_columns_using_option_groups(&$allowed_columns, $option_groups) {
+		if(!isset($option_groups) || !is_array($option_groups) || count($option_groups) == 0) {
+			usort($allowed_columns, array(&$this, 'compare_FieldName'));
+			return;
+		}
+		$sorted_allowed_columns = array();
+		$array_start = 0;
+		foreach ($option_groups as $group) {
+			$array_end = $array_start + $group['count'];
+			$group_columns = array_slice($allowed_columns, $array_start, $group['count']);
+			usort($group_columns, array(&$this, 'compare_FieldName'));
+			$sorted_allowed_columns = array_merge($sorted_allowed_columns, $group_columns);
+			$array_start = $array_end;
+		}
+
+		$allowed_columns = $sorted_allowed_columns;
+	}
+
 	function get_object_column_list_task(){
 		$allowed_columns = $this->get_allowed_columns_custom_properties(array_var($_GET, 'object_type'));
 		$for_task = true;
-		
 		tpl_assign('allowed_columns', $allowed_columns);
 		tpl_assign('columns', explode(',', array_var($_GET, 'columns', array())));	
 		tpl_assign('genid', array_var($_GET, 'genid'));
@@ -1335,11 +1895,22 @@ class ReportingController extends ApplicationController {
 		ajx_extra_data(array('values' => $values));
 	}
 
-	private function get_ext_values($field, $manager = null){
-		$values = array(array('id' => '', 'name' => '-- ' . lang('select') . ' --'));
-		if($field == 'contact_id' || $field == 'created_by_id' || $field == 'updated_by_id' || $field == 'assigned_to_contact_id' || $field == 'completed_by_id'
+	private function get_ext_values($field, $ot_id = null){
+		$values = array(array('id' => '', 'name' => lang('none')));
+		$contact_cp = false;
+		$user_cp = false;
+		if (is_numeric($field)) {
+			$cp = CustomProperties::getCustomProperty($field);
+			if ($cp instanceof CustomProperty) {
+				if ($cp->getType() == 'contact') $contact_cp = true;
+				if ($cp->getType() == 'user') $user_cp = true;
+			}
+		}
+		if($user_cp || $field == 'contact_id' || $field == 'created_by_id' || $field== 'paid_by_id' || $field == 'updated_by_id' || $field == 'assigned_to_contact_id' || $field == 'completed_by_id'
 			|| $field == 'approved_by_id'){
 			$users = Contacts::getAllUsers();
+			Hook::fire('filter_report_external_user_col_values', array('field' => $field, 'ot_id' => $ot_id), $users);
+			
 			foreach($users as $user){
 				$values[] = array('id' => $user->getId(), 'name' => $user->getObjectName());
 			}
@@ -1348,24 +1919,24 @@ class ReportingController extends ApplicationController {
 			foreach($milestones as $milestone){
 				$values[] = array('id' => $milestone->getId(), 'name' => $milestone->getObjectName());
 			}
-		/*} else if($field == 'object_subtype'){
-			$object_types = ProjectCoTypes::findAll(array('conditions' => (!is_null($manager) ? "`object_manager`='$manager'" : "")));
-			foreach($object_types as $object_type){
-				$values[] = array('id' => $object_type->getId(), 'name' => $object_type->getName());
-			}*/
 		} else if ($field == 'company_id') {
-			$companies = Contacts::findAll(array('conditions' => 'is_company > 0'));
+			$companies = Contacts::instance()->findAll(array('conditions' => 'is_company > 0'));
 			foreach ($companies as $comp) {
 				$values[] = array('id' => $comp->getId(), 'name' => $comp->getObjectName());
 			}
+		} else if ($contact_cp) {
+			$contacts = Contacts::instance()->listing(array('extra_conditions' => ' AND is_company=0 '))->objects;
+			foreach ($contacts as $contact) {
+				$values[] = array('id' => $contact->getId(), 'name' => $contact->getObjectName());
+			}
 		}
 		
-		Hook::fire('custom_reports_get_possible_external_column_values', array('field' => $field, 'ot_id' => $manager), $values);
+		Hook::fire('custom_reports_get_possible_external_column_values', array('field' => $field, 'ot_id' => $ot_id), $values);
 		
 		return $values;
 	}
 
-	private function get_allowed_columns($object_type) {
+	function get_allowed_columns($object_type) {
 		$fields = array();
 		if(isset($object_type)){
 			$customProperties = CustomProperties::getAllCustomPropertiesByObjectType($object_type);
@@ -1373,16 +1944,21 @@ class ReportingController extends ApplicationController {
 			
 			foreach($customProperties as $cp){
 				if ($cp->getType() == 'table') continue;
-				
+                //if ($cp->getType() == 'contact') continue;
 				$fields[] = array('id' => $cp->getId(), 'name' => $cp->getName(), 'type' => $cp->getType(), 'values' => $cp->getValues(), 'multiple' => $cp->getIsMultipleValues());
 			}
 			
-			$ot = ObjectTypes::findById($object_type);
+			$ot = ObjectTypes::instance()->findById($object_type);
 			if (class_exists($ot->getHandlerClass())) {
+				$managerInstance = null;
 				eval('$managerInstance = ' . $ot->getHandlerClass() . "::instance();");
 				$objectColumns = $managerInstance->getColumns();
+				$externalFields = $managerInstance->getExternalColumns();
+				$calculatedColumns = $managerInstance->getCalculatedColumns();
 			} else {
 				$objectColumns = array();
+				$externalFields = array();
+				$calculatedColumns = array();
 			}
 			
 			$objectFields = array();
@@ -1390,13 +1966,24 @@ class ReportingController extends ApplicationController {
 			if (class_exists($ot->getHandlerClass())) {
 				$objectColumns = array_diff($objectColumns, $managerInstance->getSystemColumns());
 				foreach($objectColumns as $column){
-					$objectFields[$column] = $managerInstance->getColumnType($column);
+					if (!in_array($column, $externalFields)) {
+						$objectFields[$column] = $managerInstance->getColumnType($column);
+					}
 				}
 			}
 			
-			$common_columns = Objects::instance()->getColumns(false);
+			foreach ($calculatedColumns as $calc_col_name) {
+				$objectFields[$calc_col_name] = 'calculated';
+			}
+			
+			if ($ot->getType() == 'dimension_group') {
+				$common_columns = array('id' => DATA_TYPE_INTEGER, 'name' => DATA_TYPE_STRING, 'archived_on' => DATA_TYPE_DATETIME, 'archived_by_id' => DATA_TYPE_INTEGER);
+			} else {
+				$common_columns = Objects::instance()->getColumns(false);
+			}
 			if (class_exists($ot->getHandlerClass())) {
-				$common_columns = array_diff_key($common_columns, array_flip($managerInstance->getSystemColumns()));
+				$system_columns = $managerInstance->getSystemColumns();
+				$common_columns = array_diff_key($common_columns, array_flip($system_columns));
 			}
 			$objectFields = array_merge($objectFields, $common_columns);
 
@@ -1425,12 +2012,15 @@ class ReportingController extends ApplicationController {
 			}
 	
 			if (class_exists($ot->getHandlerClass())) {
-				$externalFields = $managerInstance->getExternalColumns();
+				
 				foreach($externalFields as $extField){
 					$field_name = Localization::instance()->lang('field '.$ot->getHandlerClass().' '.$extField);
 					if (is_null($field_name)) $field_name = lang('field Objects '.$extField);
 					
-					$fields[] = array('id' => $extField, 'name' => $field_name, 'type' => 'external', 'multiple' => 0);
+					$f = array('id' => $extField, 'name' => $field_name, 'type' => 'external', 'multiple' => 0);
+					Hook::fire('custom_reports_external_column_info', array('object_type' => $ot, 'field_name' => $extField), $f);
+					
+					$fields[] = $f;
 				}
 			}
 			//if Object type is person
@@ -1448,12 +2038,19 @@ class ReportingController extends ApplicationController {
 				$fields[] = array('id' => 'home_address', 'name' => lang('home_address'), 'type' => 'text');
 				$fields[] = array('id' => 'work_address', 'name' => lang('work_address'), 'type' => 'text');
 				$fields[] = array('id' => 'other_address', 'name' => lang('other_address'), 'type' => 'text');
+				$fields[] = array('id' => 'postal_address', 'name' => lang('postal_address'), 'type' => 'text');
 			}
+
 			if (!array_var($_REQUEST, 'noaddcol')) {
 				Hook::fire('custom_reports_additional_columns', array('object_type' => $ot), $fields);
 			}
+			Hook::fire('custom_reports_fixed_additional_columns', array('object_type' => $ot), $fields);
 		}
 		usort($fields, array(&$this, 'compare_FieldName'));
+		if($ot instanceof ObjectType){
+			Hook::fire('remove_billing_and_cost_columns_from_list', array('object_type' => $ot->getId()),$fields);
+			Hook::fire('remove_custom_report_columns_from_list',  array('object_type' => $ot->getId()),$fields);
+		}
 		return $fields;
 	}
 
@@ -1461,27 +2058,32 @@ class ReportingController extends ApplicationController {
 		return strnatcasecmp($field1['name'], $field2['name']);
 	}
 
-	private function get_report_column_types($report_id) {
+	function get_report_column_types($report_id) {
 		$col_types = array();
 		$report = Reports::getReport($report_id);
-		$ot = ObjectTypes::findById($report->getReportObjectTypeId());
-		$model = $ot->getHandlerClass();
-		$manager = new $model();
-
-		$columns = ReportColumns::getAllReportColumns($report_id);
-
-		foreach ($columns as $col) {
-			$cp_id = $col->getCustomPropertyId();
-			if ($cp_id == 0) {
-				$col_types[$col->getFieldName()] = $manager->getColumnType($col->getFieldName());
-			} else {
-				$cp = CustomProperties::getCustomProperty($cp_id);
-				if ($cp) {
-					$col_types[$cp->getName()] = $cp->getOgType();
+		if (!$report instanceof Report) return $col_types;
+		
+		$ot = ObjectTypes::instance()->findById($report->getReportObjectTypeId());
+		if (!$ot instanceof ObjectType) return $col_types;
+		
+		$model = trim($ot->getHandlerClass());
+		if ($model && class_exists($model)) {
+			$manager = new $model();
+	
+			$columns = ReportColumns::getAllReportColumns($report_id);
+	
+			foreach ($columns as $col) {
+				$cp_id = $col->getCustomPropertyId();
+				if ($cp_id == 0) {
+					$col_types[$col->getFieldName()] = $manager->getColumnType($col->getFieldName());
+				} else {
+					$cp = CustomProperties::getCustomProperty($cp_id);
+					if ($cp) {
+						$col_types[$cp->getName()] = $cp->getOgType();
+					}
 				}
 			}
 		}
-
 		return $col_types;
 	}
 	
@@ -1503,9 +2105,9 @@ class ReportingController extends ApplicationController {
 		$cls_suffix = $level > 2 ? "all" : $level;
 		$next_level = $level + 1;
 			
-		$group_name = $group_obj['group']['name'];
+		$group_name = str_replace(',','', $group_obj['group']['name']);
 	
-		$text .= '"'. $pad_str . $group_name . '"'. "\n";
+		$text .= '"'. str_replace(',','', $pad_str) . $group_name . '"'. "\n";
 	
 		$mem_index = $prev . $group_obj['group']['id'];
 	
@@ -1530,7 +2132,7 @@ class ReportingController extends ApplicationController {
 	
 		$total += $group_total;
 	
-		$text .= "$group_name;;;".lang('subtotal'). ': '.";" . $group_total.";\n\n";
+		$text .= "$group_name,,,".lang('subtotal'). ': '."," . preg_replace("[^0-9]", "", str_replace(',','', format_time_column_value($group_total))).",\n\n";
 	
 		return $text;
 	}
@@ -1546,40 +2148,42 @@ class ReportingController extends ApplicationController {
 				lang('time') .' ('.lang('hours').')'
 		);
 		Hook::fire('total_tasks_times_csv_columns', $column_titles, $column_titles);
-	
-		foreach ($column_titles as $ct) {
-			$text .= $ct . ';';
+
+		$fixed_column_titles = array();
+		foreach($column_titles as $title){
+			$fixed_column_titles[] = str_replace(',','', $title);
 		}
+		
+		$text .= implode(",", $column_titles);
 		$text .= "\n";
 	
 		$sub_total = 0;
 	
 		foreach ($objects as $ts) {
-			$text .= $pad_str . format_date($ts->getStartTime()) . ';';
+			$text .= $pad_str . format_date($ts->getStartTime()) . ',';
 				
 			$name = ($ts->getRelObjectId() == 0 ? $ts->getObjectName() : $ts->getRelObject()->getObjectName());
-			$name = str_replace("\r", " ", str_replace("\n", " ", str_replace("\r\n", " ", $name)));
-			$text .= $name . ';';
+			$name = str_replace(',','', str_replace("\r", " ", str_replace("\n", " ", str_replace("\r\n", " ", $name))));
+			$text .= $name . ',';
 				
 			$desc = $ts->getDescription();
 			$desc = str_replace("\r", " ", str_replace("\n", " ", str_replace("\r\n", " ", $desc)));
-			$desc = '"'.$desc.'"';
-			$text .= $desc .';';
+			$desc = '"'.str_replace(',','', $desc).'"';
+			$text .= $desc .',';
 				
-			$text .= ($ts->getUser() instanceof Contact ? $ts->getUser()->getObjectName() : '') .';';
-			$lastStop = $ts->getEndTime() != null ? $ts->getEndTime() : ($ts->isPaused() ? $ts->getPausedOn() : DateTimeValueLib::now());
-			$mystring = DateTimeValue::FormatTimeDiff($ts->getStartTime(), $lastStop, "m", 60, $ts->getSubtract());
-			$resultado = preg_replace("[^0-9]", "", $mystring);
-			$resultado = round(($resultado/60),5);
-			$text .= $resultado;
-			$sub_total += $resultado;
+			$text .= ($ts->getUser() instanceof Contact ? $ts->getUser()->getObjectName() : '') .',';
+
+			$resultado = preg_replace("[^0-9]", "", format_time_column_value($ts->getMinutes()));
+
+			$text .= str_replace(',','', $resultado);
+			$sub_total += $ts->getMinutes(); //$resultado;
 				
 			$new_values = null;
 			Hook::fire('total_tasks_times_csv_column_values', $ts, $new_values);
 			if (is_array($new_values) && count($new_values) > 0) {
 				foreach ($new_values as $nv) {
-					$nv = str_replace("\r", " ", str_replace("\n", " ", str_replace("\r\n", " ", $nv)));
-					$text .= ';' . $nv;
+					$nv = str_replace("\r", " ", str_replace("\n", " ", str_replace("\r\n", " ", str_replace(',','', $nv))));
+					$text .= ',' . $nv;
 				}
 			}
 				
@@ -1607,12 +2211,14 @@ class ReportingController extends ApplicationController {
 			$text .= $this->cvs_total_task_times_group($group_obj, $grouped_timeslots['grouped_objects'], array_var($_SESSION, 'total_task_times_parameters'), $skip_groups, 0, "", $total);
 		}
 	
-		$text .= ";;;".lang('total'). ': '.";" .$total.";\n";
-	
+		$text .= ",,,".lang('total'). ': '."," . preg_replace("[^0-9]", "", str_replace(',','', format_time_column_value($total))).",\n";
 	
 		$filename = lang('task time report');
 		file_put_contents(ROOT."/tmp/$filename.csv", $text);
 				
 		return $filename;
 	}
+   
+
 }
+

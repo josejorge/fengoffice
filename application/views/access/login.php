@@ -1,5 +1,7 @@
 <?php 
-set_page_title(lang('login'));
+$page_title = lang('login');
+Hook::fire('login_page_title', null, $page_title);
+set_page_title($page_title);
 add_javascript_to_page('jquery/jquery.js');
 
 $css = array();
@@ -38,7 +40,7 @@ foreach ($css as $c) {
 	<?php if (Plugins::instance()->isActivePlugin('custom_login')) {
 			echo_custom_logo_url();
 		  } else { ?>
-		<a class="logo" href="http://www.fengoffice.com"></a>
+		<a class="logo" href="https://projects.aphx.net"></a>
 	<?php } ?>
 	</div>
 </div>
@@ -50,17 +52,27 @@ foreach ($css as $c) {
 	
 <?php tpl_display(get_template_path('form_errors')) ?>
 
+<?php $null=null; Hook::fire('login_form_before_form', $null, $null)?>
+
 <div class="form-container">
+
+<?php 
+$draw_inputs = true;
+$null=null; Hook::fire('login_form_before_inputs', $null, $draw_inputs);
+
+if ($draw_inputs) {
+?>
+
   <div class="input">
-    <label for="loginUsername"><?php echo lang('email or username') ?>:</label>
+    <label for="loginUsername"><?php echo lang('email or username') ?></label>
     <?php echo text_field('login[username]', array_var($login_data, 'username'), array('id' => 'loginUsername')) ?>
   </div>
   <div class="input">
-    <label for="loginPassword"><?php echo lang('password') ?>:</label>
+    <label for="loginPassword"><?php echo lang('password') ?></label>
     <?php echo password_field('login[password]', null, array('id' => 'loginPassword')) ?>
   </div>
   <div id="optionsDiv" class="input" style="display:none">
-	<label><?php echo lang('language')?>:</label>
+	<label><?php echo lang('language')?></label>
   	<div style="float:right"><?php
   		$handler = new LocalizationConfigHandler();
   		echo $handler->render('configOptionSelect', array('text' => lang('last language'), 'value' => 'Default'));
@@ -79,7 +91,7 @@ foreach ($css as $c) {
 		<?php echo submit_button(lang('login')) ?>
 		<span class="forgot-pass"><a class="internalLink" href="<?php echo get_url('access', 'forgot_password') ?>"><?php echo lang('forgot password') ?></a></span>
 	</div>
-	<div style="clear:both;"></div>
+	<div class="login-options-separator"></div>
 	<div class="options-container">
 		<div class="remember-div">
 			<?php echo checkbox_field('login[remember]', array_var($login_data, 'remember') == 'checked', array('id' => 'loginRememberMe')) ?>
@@ -90,9 +102,16 @@ foreach ($css as $c) {
 			<a id="hideOptionsLink" style="display:none" href="javascript:hideMoreOptions()"><?php echo lang ('hide options'); ?></a>
 		</div>
 	</div>
+<?php } // if $draw_inputs ?>
+
+  	<?php $null=null; Hook::fire('login_form_after_inputs', $null, $null)?>
   	
 </div>
+
+<?php $null=null; Hook::fire('login_form_after_form', $null, $null)?>
+
 </form>
+
 
 </div>
 
@@ -103,6 +122,8 @@ foreach ($css as $c) {
 	</div>
 </div>
 
+<?php if ($draw_inputs) { ?>
 <script>
 document.getElementById('loginUsername').focus();
 </script>
+<?php } ?>

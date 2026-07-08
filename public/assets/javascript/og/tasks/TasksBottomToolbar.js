@@ -35,17 +35,18 @@ og.TasksBottomToolbar = function(config) {
 			}
 		}
 	}
-	
-	if (ogTasks.additional_groupby_dimensions) {
-		for (i=0; i<ogTasks.additional_groupby_dimensions.length; i++) {
-			var gb = ogTasks.additional_groupby_dimensions[i];
+
+	if (ogTasks.additional_groupby_dimensions_member_types) {
+		for (i=0; i<ogTasks.additional_groupby_dimensions_member_types.length; i++) {
+			var gb = ogTasks.additional_groupby_dimensions_member_types[i];
 			var found = false;
 			for (k=0; k<groupcombo_store_data.length; k++) {
 				gsd = groupcombo_store_data[k];
-				found = gsd[0] == 'dimension_' + gb.id;
+				found = gsd[0] == 'dimmembertypeid_' + gb.dim_id + '_' + gb.mem_type_id;
 				if (found) break;
 			}
-			if (!found) groupcombo_store_data.push(['dimension_' + gb.id, gb.name]);
+
+			if (!found) groupcombo_store_data.push(['dimmembertypeid_' + gb.dim_id + '_' + gb.mem_type_id, gb.mem_type_name]);
 		}
 	}
 	
@@ -69,27 +70,46 @@ og.TasksBottomToolbar = function(config) {
         		ogTasks.expandedGroups = [];
 				
         		var url = og.getUrl('account', 'update_user_preference', {name: 'tasksGroupBy', value:record.data.value});
-				og.openLink(url,{hideLoading:true});
-				
-				ogTasks.draw();
+				og.openLink(url, {
+					hideLoading:true,
+					callback: function(success, data) {
+						var tp = Ext.getCmp("tasks-panel");
+				        if (tp) tp.reset();
+					}
+				});
+
+				//ogTasks.draw();
         	}
         }
     });
     this.groupcombo.setValue(ogTasks.userPreferences.groupBy);
-	
-    this.ordercombo = new Ext.form.ComboBox({
-    	id: 'ogTasksOrderByCombo',
-        store: new Ext.data.SimpleStore({
-	        fields: ['value', 'text'],
-	        data : [['priority',lang('priority')]
+    
+    var ordercombo_data = [
+    			['priority',lang('priority')]
 	        	,['name', lang('task name')]
 	        	,['due_date', lang('due date')]
 	        	,['created_on', lang('created on')]
 	        	,['completed_on', lang('completed on')]
 	        	,['assigned_to', lang('assigned to')]
 	        	,['start_date', lang('start date')]
-	        	,['percent_completed', lang('progress')]]
-	    	}),
+	        	,['percent_completed', lang('progress')]
+	];
+	
+	if (og.additional_tasks_list_order_by_fn) {
+		for (var i=0; i<og.additional_tasks_list_order_by_fn.length; i++) {
+			var add_fn = og.additional_tasks_list_order_by_fn[i];
+			if (typeof(add_fn) == 'function') {
+				ordercombo_data = add_fn.call(null, ordercombo_data);
+			}
+		}
+	}
+	
+    this.ordercombo = new Ext.form.ComboBox({
+    	id: 'ogTasksOrderByCombo',
+        store: new Ext.data.SimpleStore({
+	        fields: ['value', 'text'],
+	        data : ordercombo_data
+	    }),
         displayField:'text',
         //typeAhead: true,
         mode: 'local',
@@ -103,9 +123,15 @@ og.TasksBottomToolbar = function(config) {
 				
 				ogTasks.redrawGroups = true;
 				var url = og.getUrl('account', 'update_user_preference', {name: 'tasksOrderBy', value:record.data.value});
-				og.openLink(url,{hideLoading:true});
 				
-				ogTasks.draw();
+				og.openLink(url, {
+					hideLoading:true,
+					callback: function(success, data) {
+						var tp = Ext.getCmp("tasks-panel");
+				        if (tp) tp.reset();
+					}
+				});
+				//ogTasks.draw();
         	}
         }
     });
@@ -127,6 +153,19 @@ og.TasksBottomToolbar = function(config) {
 			if (filtercombo_store_data[x][0] == 'milestone') {
 				filtercombo_store_data.splice(x, 1);
 			}
+		}
+	}
+    
+    if (ogTasks.additional_filtercombo_types) {
+		for (i=0; i<ogTasks.additional_filtercombo_types.length; i++) {
+			var gb = ogTasks.additional_filtercombo_types[i];
+			var found = false;
+			for (k=0; k<filtercombo_store_data.length; k++) {
+				gsd = filtercombo_store_data[k];
+				found = gsd[0] == gb.id;
+				if (found) break;
+			}
+			if (!found) filtercombo_store_data.push([gb.id, gb.name]);
 		}
 	}
     
@@ -194,6 +233,15 @@ og.TasksBottomToolbar = function(config) {
         				Ext.getCmp('ogTasksFilterMilestonesCombo').hide();
         				Ext.getCmp('ogTasksFilterPriorityCombo').hide();
         				Ext.getCmp('ogTasksFilterSubtypeCombo').hide();
+        				
+        				if (ogTasks.additional_filtercombo_types) {
+        					for (var x=0; x<ogTasks.additional_filtercombo_types.length; x++) {
+        						var fc_type = ogTasks.additional_filtercombo_types[x];
+        						if (fc_type && typeof(fc_type.onselect) == 'function') {
+        							fc_type.onselect.call(null, record.data.value);
+        						}
+        					}
+        				}
         				break;
         		}
         	}
@@ -202,53 +250,108 @@ og.TasksBottomToolbar = function(config) {
     this.filtercombo.setValue(ogTasks.userPreferences.filter);
 
     
-    
-    var currentUser = '';
-    var usersArray = Ext.util.JSON.decode(document.getElementById(config.usersHfId).value);
-    var companiesArray = Ext.util.JSON.decode(document.getElementById(config.companiesHfId).value);
-    for (var i=0; i<usersArray.length; i++){
-		if (usersArray[i].isCurrent) {
-			currentUser = usersArray[i].id;
-		}
-	}
-	var ucsData = [[currentUser, lang('me')],['0',lang('everyone')],['-1', lang('unassigned')],['0','--']];
-	
-	ucsOtherUsers = [];
-	for (var i=0; i<usersArray.length; i++){
-		var companyName = '';
-		var j;
-		for (var j=0; j<companiesArray.length; j++){
-			if (companiesArray[j] && companiesArray[j].id == usersArray[i].cid) {
-				companyName = companiesArray[j].name;
-				break;
+setTimeout(function() {
+    og.openLink(og.getUrl('task', 'users_for_tasks_list_filter'), {
+    	callback: function(success, data) {
+    		if (!data) return;
+
+    		var currentUser = '';
+    		var usersArray = data.users;
+    	    var companiesArray = data.companies;
+    	    
+    	    for (var i=0; i<usersArray.length; i++){
+    			if (usersArray[i].isCurrent) {
+    				currentUser = usersArray[i].id;
+    			}
+    		}
+    		var ucsData = [[currentUser, lang('me')],['0',lang('everyone')],['-1', lang('unassigned')],['0','--']];
+    		
+    		ucsOtherUsers = [];
+    		for (var i=0; i<usersArray.length; i++){
+    			var companyName = '';
+    			var j;
+    			for (var j=0; j<companiesArray.length; j++){
+    				if (companiesArray[j] && companiesArray[j].id == usersArray[i].cid) {
+    					companyName = companiesArray[j].name;
+    					break;
+    				}
+    			}
+    			if (usersArray[i] && typeof(usersArray[i]) != 'function') {
+    				var toshow = og.clean(usersArray[i].name) + (usersArray[i].cid ? ' : ' + og.clean(companyName) : "");
+    				ucsOtherUsers[ucsOtherUsers.length] = [usersArray[i].id, toshow];
+    			}
+    			if (usersArray[i].isCurrent) {
+    				currentUser = usersArray[i].id;
+    			}
+    		}
+    		
+    		var compData = [];
+    		if (og.config.can_assign_tasks_to_companies) {
+    			compData = compData.concat([['0','--']]);
+    			for (var i=0; i<companiesArray.length; i++){
+    				if (companiesArray[i].id) compData[compData.length] = [companiesArray[i].id, og.clean(companiesArray[i].name)];
+    			}
+    		}
+    		
+    		//var namesCompaniesComboShowIf = ['completed_by','created_by','assigned_to','assigned_by','subscribed_to'];
+    		var namesCompaniesComboShowIf = ['assigned_to'];
+    		
+    		ucsData = ucsData.concat(ucsOtherUsers).concat(compData);
+    		
+    		var com = Ext.getCmp('ogTasksFilterNamesCompaniesCombo');
+			if (com) {
+	    		com.reset();
+				com.store.removeAll();
+				com.store.loadData(ucsData);
+				com.setValue(ogTasks.userPreferences.filterValue);
+				com.enable();
 			}
-		}
-		if (usersArray[i] && typeof(usersArray[i]) != 'function') {
-			var toshow = og.clean(usersArray[i].name) + (usersArray[i].cid ? ' : ' + og.clean(companyName) : "");
-			ucsOtherUsers[ucsOtherUsers.length] = [usersArray[i].id, toshow];
-		}
-		if (usersArray[i].isCurrent) {
-			currentUser = usersArray[i].id;
-		}
-	}
-	
-	var compData = [];
-	if (og.config.can_assign_tasks_to_companies) {
-		compData = compData.concat([['0','--']]);
-		for (var i=0; i<companiesArray.length; i++){
-			if (companiesArray[i].id) compData[compData.length] = [companiesArray[i].id, og.clean(companiesArray[i].name)];
-		}
-	}
-	
-	//ucsData = ucsData.concat(ogTasksOrderUsers(ucsOtherUsers)).concat(compData);
-	ucsData = ucsData.concat(ucsOtherUsers).concat(compData);
+    	    
+    	    for (var i=0; i<usersArray.length; i++){
+    			if (usersArray[i].isCurrent)
+    				currentUser = usersArray[i].id;
+    		}
+    		var uData = [[currentUser, lang('me')],['0',lang('everyone')],['0','--']];
+    		uDOtherUsers = [];
+    		for (var i=0; i<usersArray.length; i++){
+    			if (usersArray[i] && !usersArray[i].isCurrent && usersArray[i].id) {
+    				var companyName = '';
+    				var j;
+    				for (var j=0; j<companiesArray.length; j++){
+    					if (companiesArray[j] && companiesArray[j].id == usersArray[i].cid) {
+    						companyName = companiesArray[j].name;
+    						break;
+    					}
+    				}
+
+    				var toshow = og.clean(usersArray[i].name) + (usersArray[i].cid ? ' : ' + og.clean(companyName) : "");
+    				uDOtherUsers[uDOtherUsers.length] = [usersArray[i].id, toshow];
+    			}
+    		}
+    		uData = uData.concat(uDOtherUsers).concat(compData);
+    		
+    		var com2 = Ext.getCmp('ogTasksFilterNamesCombo');
+			if (com2) {
+				com2.reset();
+				com2.store.removeAll();
+				com2.store.loadData(uData);
+				com2.setValue(ogTasks.userPreferences.filterValue);
+				com2.enable();
+			}
+    	}, 
+    	scope: og.TasksBottomToolbar
+    });
+}, 1000);
+	//var namesCompaniesComboShowIf = ['completed_by','created_by','assigned_to','assigned_by','subscribed_to'];
+	var namesCompaniesComboShowIf = ['assigned_to'];
+    
     this.filterNamesCompaniesCombo = new Ext.form.ComboBox({
     	id: 'ogTasksFilterNamesCompaniesCombo',
-        store: new Ext.data.SimpleStore({
+        store: new Ext.data.SimpleStore({ // load data in in other request
 	        fields: ['value', 'text'],
-	        data : ucsData
+	        data : []//ucsData
 	    }),
-	    hidden: ogTasks.userPreferences.filter != 'assigned_to',
+	    hidden: namesCompaniesComboShowIf.indexOf(ogTasks.userPreferences.filter) < 0,
         displayField:'text',
         //typeAhead: true,
         mode: 'local',
@@ -282,37 +385,18 @@ og.TasksBottomToolbar = function(config) {
         }
     });
     this.filterNamesCompaniesCombo.setValue(ogTasks.userPreferences.filterValue);
+    this.filterNamesCompaniesCombo.disable();
     
-    for (var i=0; i<usersArray.length; i++){
-		if (usersArray[i].isCurrent)
-			currentUser = usersArray[i].id;
-	}
-	var uData = [[currentUser, lang('me')],['0',lang('everyone')],['0','--']];
-	uDOtherUsers = [];
-	for (var i=0; i<usersArray.length; i++){
-		if (usersArray[i] && !usersArray[i].isCurrent && usersArray[i].id) {
-			var companyName = '';
-			var j;
-			for (var j=0; j<companiesArray.length; j++){
-				if (companiesArray[j] && companiesArray[j].id == usersArray[i].cid) {
-					companyName = companiesArray[j].name;
-					break;
-				}
-			}
-
-			var toshow = og.clean(usersArray[i].name) + (usersArray[i].cid ? ' : ' + og.clean(companyName) : "");
-			uDOtherUsers[uDOtherUsers.length] = [usersArray[i].id, toshow];
-		}
-	}
-	uData = uData.concat(uDOtherUsers).concat(compData);
+    var namesComboShowIf = ['completed_by','created_by','assigned_by','subscribed_to'];
     this.filterNamesCombo = new Ext.form.ComboBox({
     	id: 'ogTasksFilterNamesCombo',
-        store: new Ext.data.SimpleStore({
+        store: new Ext.data.SimpleStore({ // load data in in other request
 	        fields: ['value', 'text'],
-	        data : uData
+	        data : []//uData
 	    }),
-	    hidden: (ogTasks.userPreferences.filter == 'milestone' || ogTasks.userPreferences.filter == 'priority' || ogTasks.userPreferences.filter == 'assigned_to' || ogTasks.userPreferences.filter == 'subtype' || ogTasks.userPreferences.filter == 'no_filter'),
-        displayField:'text',
+	    //hidden: true,//(ogTasks.userPreferences.filter == 'milestone' || ogTasks.userPreferences.filter == 'priority' || ogTasks.userPreferences.filter == 'assigned_to' || ogTasks.userPreferences.filter == 'subtype' || ogTasks.userPreferences.filter == 'no_filter'),
+	    hidden: namesComboShowIf.indexOf(ogTasks.userPreferences.filter) < 0,
+	    displayField:'text',
         //typeAhead: true,
         mode: 'local',
         triggerAction: 'all',
@@ -330,6 +414,7 @@ og.TasksBottomToolbar = function(config) {
 		}
 	});
     this.filterNamesCombo.setValue(ogTasks.userPreferences.filterValue);
+    this.filterNamesCombo.disable();
     
     this.filterPriorityCombo = new Ext.form.ComboBox({
     	id: 'ogTasksFilterPriorityCombo',
@@ -429,14 +514,14 @@ og.TasksBottomToolbar = function(config) {
     	id: 'ogTasksStatusCombo',
         store: new Ext.data.SimpleStore({
 	        fields: ['value', 'text'],
-	        data : [[2, '--' + lang('no filter') + '--'],[0, lang('pending')],[1, lang('complete')], [10, lang('active')], [11, lang('overdue')], [12, lang('today')], [13, lang('overdue')+"+"+lang('today')]]
+	        data : [[2, '--' + lang('no filter') + '--'],[0, lang('pending')],[1, lang('complete')], [10, lang('active')], [11, lang('overdue')], [12, lang('today')], [13, lang('overdue')+"+"+lang('today')], [14, lang('no due date')], [15, lang('upcoming tasks w')]]
 	    }),
         displayField:'text',
         //typeAhead: true,
         mode: 'local',
         triggerAction: 'all',
         selectOnFocus:true,
-        width:120,
+        width:130,
         valueField: 'value',
         listeners: {
         	'select' : function(combo, record) {
@@ -445,6 +530,8 @@ og.TasksBottomToolbar = function(config) {
         	}
         }
     });
+    
+  if (og.config.tasks_use_date_filters) {
     // DatePicker Menu  
     this.dateFieldStart = new og.DateField({
 		displayField : 'text',
@@ -561,6 +648,7 @@ og.TasksBottomToolbar = function(config) {
 	});
     this.dateFieldEnd.setValue(ogTasks.userPreferences.dateEnd); 	
     this.dateFieldStart.setValue(ogTasks.userPreferences.dateStart);
+  }
     this.statusCombo.setValue(ogTasks.userPreferences.status);
     this.add(lang('filter') + ':');
     this.add(this.filtercombo);
@@ -569,6 +657,22 @@ og.TasksBottomToolbar = function(config) {
     this.add(this.filterPriorityCombo);
     this.add(this.filterSubtypeCombo);
     this.add(this.filterMilestonesCombo);
+    
+    if (ogTasks.additional_filtercombo_types) {
+		for (var x=0; x<ogTasks.additional_filtercombo_types.length; x++) {
+			var fc_type = ogTasks.additional_filtercombo_types[x];
+			
+			try {
+				if (fc_type && fc_type.component_id) {
+					var comp = Ext.getCmp(fc_type.component_id);
+					if (comp) this.add(comp);
+				}
+			} catch (e) {
+				
+			}
+		}
+	}
+    
     this.add('&nbsp;&nbsp;&nbsp;' + lang('status') + ':');
     this.add(this.statusCombo);
     
@@ -576,14 +680,16 @@ og.TasksBottomToolbar = function(config) {
     this.add(this.groupcombo);
     this.add('&nbsp;&nbsp;&nbsp;' + lang('order by') + ':');
     this.add(this.ordercombo);
-    this.add('&nbsp;&nbsp;&nbsp;' + lang('from date') + ':');
-    this.add(this.dateFieldStart);
-    this.add('&nbsp;&nbsp;&nbsp;' + lang('to date') + ':');
-    this.add(this.dateFieldEnd);
     
+    if (og.config.tasks_use_date_filters) {
+	    this.add('&nbsp;&nbsp;&nbsp;' + lang('from date') + ':');
+	    this.add(this.dateFieldStart);
+	    this.add('&nbsp;&nbsp;&nbsp;' + lang('to date') + ':');
+	    this.add(this.dateFieldEnd);
+    }
     if (ogTasks.extraBottomToolbarItems) {
-    	for (i=0; i<ogTasks.extraTopToolbarItems.length; i++) {
-    		this.add(ogTasks.extraTopToolbarItems[i]);
+    	for (i=0; i<ogTasks.extraBottomToolbarItems.length; i++) {
+    		this.add(ogTasks.extraBottomToolbarItems[i]);
     	}
     }
 };
@@ -617,6 +723,18 @@ Ext.extend(og.TasksBottomToolbar, Ext.Toolbar, {
 				break;
 			default:
 				filterValue = this.filterNamesCombo.getValue();
+				
+				if (ogTasks.additional_filtercombo_types) {
+					for (var x=0; x<ogTasks.additional_filtercombo_types.length; x++) {
+						var fc_type = ogTasks.additional_filtercombo_types[x];
+						if (fc_type && fc_type.component_id && this.filtercombo.getValue() == fc_type.id) {
+							var comp = Ext.getCmp(fc_type.component_id);
+							if (comp) filterValue = comp.getValue();
+							else filterValue = "";
+						}
+					}
+				}
+				
 				break;
 		}		
 		return {

@@ -7,9 +7,6 @@
   * of its features is automatinc caching of loaded data.
   *
   * @package System
-  * @version 1.0
-  * @author Ilija Studen <ilija.studen@gmail.com>
-  * @copyright 2005 by Ilija Studen
   */
   abstract class DataManager {
   
@@ -104,7 +101,7 @@
     * @return array
     */
     function getSystemColumns() {
-      return array('object_id', 'object_type_id', 'created_by_id', 'updated_by_id', 'trashed_on', 'trashed_by_id', 'archived_by_id');
+      return array('object_id', 'object_type_id', 'created_by_id', 'updated_by_id', 'trashed_on', 'trashed_by_id', 'archived_by_id', 'timezone_id', 'timezone_value');
     } // getSystemColumns
     
     /**
@@ -236,7 +233,7 @@
     *  - offset - limit offset, valid only if limit is present
     *  - limit
     * 
-    * @return one or many objects
+    * @return mixed one or many objects
     * @throws DBQueryError
     */
     function find($arguments = null) {
@@ -278,7 +275,14 @@
       // Prepare SQL
       $sql = "SELECT $distinct" . $columns_string . " FROM " . $this->getTableName(true) . " $where_string $order_by_string $limit_string";
 
+       
+      //Logger::log_r("Table name: \n");
+      //Logger::log_r($this->getTableName());
+      //Logger::log_r("SQL = \n");
+      //Logger::log_r($sql);
+
       // Run!
+      //Logger::log_r("DataManger.find. SQL sentence is: \n".$sql."\n");
       $rows = DB::executeAll($sql);
 
       // Empty?
@@ -317,6 +321,7 @@
     function findAll($arguments = null) {
       if(!is_array($arguments)) $arguments = array();
       $arguments['one'] = false;
+      //Logger::log_r("Entering findAll in DataManager. \n. Arguments:".implode("|",$arguments)."\n");
       $ret = $this->find($arguments);
       if (is_array($ret)) {
       	return $ret;

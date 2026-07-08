@@ -28,7 +28,7 @@ class ChorizoUpgradeScript extends ScriptUpgraderScript {
 	 * @var array
 	 */
 	private $check_extensions = array(
-		'mysql', 'gd', 'simplexml'
+		'mysqli', 'gd', 'simplexml'
 	); // array
 
 	 /**
@@ -58,9 +58,9 @@ class ChorizoUpgradeScript extends ScriptUpgraderScript {
 	 * @return boolean
 	 */
 	function execute() {
-		if (!@mysql_ping($this->database_connection)) {
-			if ($dbc = mysql_connect(DB_HOST, DB_USER, DB_PASS)) {
-				if (mysql_select_db(DB_NAME, $dbc)) {
+		if (!@mysqli_ping($this->database_connection)) {
+			if ($dbc = mysqli_connect(DB_HOST, DB_USER, DB_PASS)) {
+				if (mysqli_select_db($dbc, DB_NAME)) {
 					$this->printMessage('Upgrade script has connected to the database.');
 				} else {
 					$this->printMessage('Failed to select database ' . DB_NAME);
@@ -77,10 +77,10 @@ class ChorizoUpgradeScript extends ScriptUpgraderScript {
 		//  Check MySQL version
 		// ---------------------------------------------------
 
-		$mysql_version = mysql_get_server_info($this->database_connection);
+		$mysql_version = mysqli_get_server_info($this->database_connection);
 		if($mysql_version && version_compare($mysql_version, '4.1', '>=')) {
 			$constants['DB_CHARSET'] = 'utf8';
-			@mysql_query("SET NAMES 'utf8'", $this->database_connection);
+			@mysqli_query($this->database_connection, "SET NAMES 'utf8'");
 			tpl_assign('default_collation', $default_collation = 'collate utf8_unicode_ci');
 			tpl_assign('default_charset', $default_charset = 'DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci');
 		} else {
@@ -120,7 +120,7 @@ class ChorizoUpgradeScript extends ScriptUpgraderScript {
 						('mails panel', 'mails_per_page', '50', 'IntegerConfigHandler', '0', '0', NULL),
 						('general', 'access_member_after_add', '1', 'BoolConfigHandler', '0', '1300', NULL),
 						('general', 'access_member_after_add_remember', '0', 'BoolConfigHandler', '0', '1301', NULL),
-						('general', 'sendEmailNotification', '1', 'BoolConfigHandler', '1', '0', 'Send email notification to new user'),
+						('general', 'sendEmailNotification', '1', 'BoolConfigHandler', '0', '0', 'Send email notification to new user'),
  						('general', 'viewContactsChecked', '1', 'BoolConfigHandler', '1', '0', 'in people panel is view contacts checked'),
  						('general', 'viewUsersChecked', '1', 'BoolConfigHandler', '0', '0', 'in people panel is view users checked'),
  						('general', 'viewCompaniesChecked', '1', 'BoolConfigHandler', '1', '0', 'in people panel is view companies checked'),
@@ -260,7 +260,7 @@ class ChorizoUpgradeScript extends ScriptUpgraderScript {
 		if($this->executeMultipleQueries($upgrade_script, $total_queries, $executed_queries, $this->database_connection)) {
 			$this->printMessage("Database schema transformations executed (total queries: $total_queries)");
 		} else {
-			$this->printMessage('Failed to execute DB schema transformations. MySQL said: ' . mysql_error(), true);
+		    $this->printMessage('Failed to execute DB schema transformations. MySQL said: ' . mysqli_error($this->database_connection), true);
 			return false;
 		}
 		

@@ -22,9 +22,13 @@ class Timeslots extends BaseTimeslots {
 		$userCondition = '';
 		if ($user)
 			$userCondition = ' AND `contact_id` = '. $user->getId();
+			
+		if(!SystemPermissions::userHasSystemPermission(logged_user(), 'can_see_others_timeslots')){
+			$userCondition = " AND contact_id = " . logged_user()->getId();
+		}
 
-		return self::findAll(array(
-          'conditions' => array('`rel_object_id` = ?' . $userCondition, $object->getObjectId()),
+		return self::instance()->findAll(array(
+          'conditions' => array('`rel_object_id` = ? AND o.trashed_by_id=0' . $userCondition, $object->getObjectId()),
           'order' => '`e`.`start_time`'
           ));
 	}
@@ -35,25 +39,42 @@ class Timeslots extends BaseTimeslots {
 		if ($user)
 			$userCondition = ' AND `user_id` = '. $user->getId();
 
-		return self::findOne(array(
-          'conditions' => array('`rel_object_id` = ? AND `end_time`= ? ' . $userCondition, $object->getObjectId(), EMPTY_DATETIME), 
+		return self::instance()->findOne(array(
+          'conditions' => array('`rel_object_id` = ? AND `end_time`= ? AND o.trashed_by_id=0 ' . $userCondition, $object->getObjectId(), EMPTY_DATETIME), 
           'order' => '`e`.`start_time`'
           ));
 	}
+    
+    static function getAllOpenTimeslotByObjectByUser($user) {
+        return self::instance()->find(array(
+            'conditions' => array('`e`.`end_time`= ? AND `o`.`created_by_id` = ? AND o.trashed_by_id=0 ', EMPTY_DATETIME,$user->getId()),
+            'order' => '`e`.`start_time`'
+        ));
+    }
 
 
 	private $cached_timeslots = null;
 
 	function getOpenTimeslotsByObject($object_id) {
-		if ($this->cached_timeslots == null) {
+		if (!isset($this->cached_timeslots) || $this->cached_timeslots == null) {
 			$this->cached_timeslots = array();
-			$cached_ts = self::findAll(array('conditions' => array('`end_time`= ? ', EMPTY_DATETIME), 'order' => 'start_time'));
+			$cached_ts = self::instance()->findAll(array('conditions' => array('`end_time`= ? AND o.trashed_by_id=0 ', EMPTY_DATETIME), 'order' => 'start_time'));
 			foreach ($cached_ts as $ct) {
 				if (!isset($this->cached_timeslots[$ct->getRelObjectId()])) $this->cached_timeslots[$ct->getRelObjectId()] = array();
 				$this->cached_timeslots[$ct->getRelObjectId()][] = $ct;
 			}
 		}
 		return array_var($this->cached_timeslots, $object_id, array());
+	}
+	
+	function clearTimeslotsCache($object_id=null) {
+		if ($object_id) {
+			if (is_array($this->cached_timeslots) && isset($this->cached_timeslots[$object_id])) {
+				unset($this->cached_timeslots[$object_id]);
+			}
+		} else {
+			$this->cached_timeslots = null;
+		}
 	}
 
 	/**
@@ -65,9 +86,9 @@ class Timeslots extends BaseTimeslots {
 	static function countTimeslotsByObject(ContentDataObject $object, $user = null) {
 		$userCondition = '';
 		if ($user)
-			$userCondition = ' AND `contact_id` = '. $user->getId();
+			$userCondition = ' AND trashed_by_id=0 AND `contact_id` = '. $user->getId();
 
-		return self::count(array('`rel_object_id` = ? ' . $userCondition, $object->getObjectId()));
+		return self::instance()->count(array('`rel_object_id` = ? ' . $userCondition, $object->getObjectId()));
 	} // countTimeslotsByObject
 
 	/**
@@ -77,7 +98,7 @@ class Timeslots extends BaseTimeslots {
 	 * @return boolean
 	 */
 	static function dropTimeslotsByObject(ContentDataObject $object) {
-		$timeslots = self::findAll(array('conditions' => array('`rel_object_id` = ?', $object->getObjectId())));
+		$timeslots = self::instance()->findAll(array('conditions' => array('`rel_object_id` = ? AND o.trashed_by_id=0 ', $object->getObjectId())));
 		foreach ($timeslots as $timeslot) {
 			$timeslot->delete();
 		}
@@ -102,7 +123,7 @@ class Timeslots extends BaseTimeslots {
 			$commonConditions .= DB::prepareString(' AND `e`.`start_time` >= ? ', array($start_date));
 		}
 		if ($end_date) {
-			$commonConditions .= DB::prepareString(' AND (`e`.`paused_on` <> 0 AND `e`.`paused_on` <= ? OR `e`.`end_time` <> 0 AND `e`.`end_time` <= ?) ', array($end_date, $end_date));
+			$commonConditions .= DB::prepareString(' AND (`e`.`paused_on` <> 0 AND `e`.`paused_on` <= ? OR `e`.`end_time` <> 0 AND `e`.`start_time` <= ?) ', array($end_date, $end_date));
 		}
 		//User condition
 		$commonConditions .= $user ? ' AND `e`.`contact_id` = '. $user->getId() : '';
@@ -118,13 +139,12 @@ class Timeslots extends BaseTimeslots {
 				$conditions = " AND `e`.`rel_object_id` = 0";
 				break;
 			case 2: //All timeslots
-				$conditions = " AND (`e`.`rel_object_id` = 0 OR `e`.`rel_object_id` IN (SELECT `obj`.`id` FROM `" . TABLE_PREFIX . "objects` `obj` WHERE `obj`.`trashed_on` = 0 AND `obj`.`archived_on` = 0))";
+				$conditions = "";// " AND (`e`.`rel_object_id` = 0 OR `e`.`rel_object_id` IN (SELECT `obj`.`id` FROM `" . TABLE_PREFIX . "objects` `obj` WHERE `obj`.`trashed_on` = 0 AND `obj`.`archived_on` = 0))";
 				break;
 			default:
 				throw new Error("Timeslot type not recognised: " . $timeslot_type);
 		}
-		
-		if (!SystemPermissions::userHasSystemPermission(logged_user(), 'can_see_assigned_to_other_tasks')) {
+		if ((!SystemPermissions::userHasSystemPermission(logged_user(), 'can_see_assigned_to_other_tasks')) || (!SystemPermissions::userHasSystemPermission(logged_user(), 'can_see_others_timeslots'))) {
 			$conditions .= " AND `e`.`contact_id` = " . logged_user()->getId();
 		}
 		
@@ -175,7 +195,7 @@ class Timeslots extends BaseTimeslots {
 					
 					$billing_category = array_var($categories_cache, $billing_category_id);
 					if (!$billing_category instanceof BillingCategory) {
-						$billing_category = BillingCategories::findById($billing_category_id);
+						$billing_category = BillingCategories::instance()->findById($billing_category_id);
 						$categories_cache[$billing_category_id] = $billing_category;
 					}
 					
@@ -203,6 +223,10 @@ class Timeslots extends BaseTimeslots {
 		$userCondition = '';
 		if ($user)
 			$userCondition = ' AND `contact_id` = '. $user->getId();
+
+		if(!SystemPermissions::userHasSystemPermission(logged_user(), 'can_see_others_timeslots')){
+			$userCondition = " AND contact_id = " . logged_user()->getId();
+		}
 		
 		$projectCondition = '';
 		if ($workspacesCSV && $object_manager == 'ProjectTasks')
@@ -220,7 +244,7 @@ class Timeslots extends BaseTimeslots {
 		if ($object_id > 0)
 			$objectCondition = ' AND `rel_object_id` = ' . $object_id;
 		
-		return self::findAll(array(
+		return self::instance()->findAll(array(
           'conditions' => array('`start_time` > ? and `end_time` < ?' . $userCondition . $projectCondition . $permissions . $objectCondition, $start_date, $end_date),
           'order' => '`start_time`'
         ));
@@ -232,6 +256,9 @@ class Timeslots extends BaseTimeslots {
 		$user_sql = "";
 		if ($user instanceof Contact) {
 			$user_sql = " AND contact_id = " . $user->getId();
+		}
+		if(!SystemPermissions::userHasSystemPermission(logged_user(), 'can_see_others_timeslots')){
+			$user_sql = " AND contact_id = " . logged_user()->getId();
 		}
 		
 		$result = Timeslots::instance()->listing(array(
@@ -245,6 +272,41 @@ class Timeslots extends BaseTimeslots {
 		return $result;
 	}
 	
+	static function getTotalMinutesWorkedOnObject($object_id) {
+		$sql = " SELECT SUM(GREATEST(TIMESTAMPDIFF(MINUTE,start_time,end_time),0)) - SUM(subtract/60) as total
+				FROM `".TABLE_PREFIX."timeslots` ts
+				INNER JOIN `".TABLE_PREFIX."objects` o ON o.id=ts.object_id
+				WHERE `rel_object_id` =  ". $object_id ." 
+				AND `end_time` > ".DB::escape(EMPTY_DATETIME)."
+				AND o.trashed_by_id=0";
+
+		if(!SystemPermissions::userHasSystemPermission(logged_user(), 'can_see_others_timeslots')){
+			$sql .= " AND contact_id = " . logged_user()->getId(); 
+		}
+		$sql .= ";";
+		
+		$result = DB::executeOne($sql);
+		$name = "total";
+		return array_var($result, $name);
+	}
+	
+	static function getTotalSecondsWorkedOnObject($object_id) {//getTotalSecondsWorkedOnObject
+		$totalMinutes = Timeslots::getTotalMinutesWorkedOnObject($object_id);
+		$totalSeconds = $totalMinutes * 60;
+		return $totalSeconds;
+	}
+	
+	
+	function getColumnsToAggregateInTotals() {
+		$parent_cols = parent::getColumnsToAggregateInTotals();
+		$cols = array(
+			'worked_time' => array('operation' => 'sum', 'format' => 'time'),
+            'subtract' => array('operation' => 'sum', 'format' => 'time'),
+            'fixed_billing' => array('operation' => 'sum', 'format' => 'money', 'currency_id_col' => 'rate_currency_id', 'group_by' => 'rate_currency_id'),
+        );
+		
+		return array_merge($parent_cols, $cols);
+	}
 	
 } // Timeslots
 

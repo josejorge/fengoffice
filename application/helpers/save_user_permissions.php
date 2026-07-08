@@ -11,11 +11,13 @@
 
 	Env::useHelper('permissions');
 	
+	debug_log("Start Save user permissions", "permissions_debug.log");
+	
 	$user_id = array_var($argv, 2);
 	$token = array_var($argv, 3);
 	
 	// log user in
-	$user = Contacts::findById($user_id);
+	$user = Contacts::instance()->findById($user_id);
 	if(!($user instanceof Contact) || !$user->isValidToken($token)) {
 		throw new Exception("Cannot login with user $user_id and token '$token'");
 	}
@@ -32,6 +34,7 @@
 	$users_ids_to_check_filename = array_var($argv, 10);
 	$root_permissions_genid = array_var($argv, 11);
 	$only_member_permissions = array_var($argv, 12) == "1";
+	$is_new_user = array_var($argv, 13) == "1";
 	
 	$permissions = file_get_contents($permissions_filename);
 	$sys_permissions = json_decode(file_get_contents($sys_permissions_filename), true);
@@ -47,12 +50,16 @@
 		'root_perm_genid' => $root_permissions_genid,
 	);
 	
+	debug_log("Before save_permissions", "permissions_debug.log");
+	
 	// save permissions
 	try {
-		$result = save_permissions($pg_id, $is_guest, $perms, true, false, false, false, array(), $only_member_permissions);
+		$result = save_permissions($pg_id, $is_guest, $perms, true, false, false, false, array(), $only_member_permissions, $is_new_user);
 	} catch (Exception $e) {
 		Logger::log("Error saving permissions (1): ".$e->getMessage()."\n".$e->getTraceAsString());
 	}
+	
+	debug_log("Before sharing table update", "permissions_debug.log");
 	
 	// update sharing table
 	try {
@@ -81,9 +88,14 @@
 			}
 		}
 		if (count($to_insert) > 0) {
-			$values = implode(',', $to_insert);
-			DB::execute("INSERT INTO ".TABLE_PREFIX."contact_member_permissions (permission_group_id,member_id,object_type_id,can_delete,can_write)
-			VALUES $values ON DUPLICATE KEY UPDATE member_id=member_id");
+			$to_insert_parts = array_chunk($to_insert, 100);
+			foreach ($to_insert_parts as $to_insert_part) {
+				$values = implode(',', $to_insert_part);
+				DB::execute("
+					INSERT INTO ".TABLE_PREFIX."contact_member_permissions (permission_group_id,member_id,object_type_id,can_delete,can_write)
+					VALUES $values ON DUPLICATE KEY UPDATE member_id=member_id
+				");
+			}
 		}
 		if (count($to_delete) > 0) {
 			$where = implode(' OR ', $to_delete);
@@ -93,20 +105,16 @@
 		// root permissions
 		$root_permissions_sharing_table_add = array();
 		$root_permissions_sharing_table_delete = array();
-		
-		foreach ($root_permissions as $name => $value) {
-			if (str_starts_with($name, $root_permissions_genid . 'rg_root_')) {
-				$rp_ot = substr($name, strrpos($name, '_')+1);
-				
-				if (is_numeric($rp_ot) && $rp_ot > 0 && $value == 0) {
-					$root_permissions_sharing_table_delete[] = $rp_ot;
-				}
-				if (!is_numeric($rp_ot) || $rp_ot <= 0 || $value < 1) continue;
-				
-				$root_permissions_sharing_table_add[] = $rp_ot;
-			}
-		}
-		$rp_info = array('root_permissions_sharing_table_delete' => $root_permissions_sharing_table_delete, 'root_permissions_sharing_table_add' => $root_permissions_sharing_table_add);
+
+		if(is_array($result) && array_key_exists('root_permissions_sharing_table_add',$result)){
+            $root_permissions_sharing_table_add = $result['root_permissions_sharing_table_add'];
+        }
+
+        if(is_array($result) && array_key_exists('root_permissions_sharing_table_delete',$result)){
+            $root_permissions_sharing_table_delete = $result['root_permissions_sharing_table_delete'];
+        }
+
+        $rp_info = array('root_permissions_sharing_table_delete' => $root_permissions_sharing_table_delete, 'root_permissions_sharing_table_add' => $root_permissions_sharing_table_add);
 		
 		// update sharing table
 		DB::beginWork();
@@ -121,11 +129,13 @@
 		Logger::log("Error saving permissions (2): ".$e->getMessage()."\n".$e->getTraceAsString());
 	}
 	
+	debug_log("Before member cache update", "permissions_debug.log");
+	
 	// save tree
 	try {
 		DB::beginWork();
 		$contactMemberCacheController = new ContactMemberCacheController();
-		$group = PermissionGroups::findById($pg_id);
+		$group = PermissionGroups::instance()->findById($pg_id);
 		
 		$real_group = null;
 		if($group->getType() == 'user_groups'){
@@ -139,12 +149,13 @@
 			$users_ids_checked[] = $us->getId();
 			$contactMemberCacheController->afterUserPermissionChanged($us, json_decode($permissions), $real_group);
 		}
+		debug_log("Member cache update part 2", "permissions_debug.log");
 		
 		//check all users in users_ids_to_check (we do this because a user can be removed from a group)
 		foreach ($users_ids_to_check as $us_id) {
 			if(!in_array($us_id, $users_ids_checked)){
 				$users_ids_checked[] = $us_id;
-				$us = Contacts::findById($us_id);
+				$us = Contacts::instance()->findById($us_id);
 				if($us instanceof Contact){
 					$contactMemberCacheController->afterUserPermissionChanged($us, json_decode($permissions), $real_group);
 				}
@@ -155,6 +166,8 @@
 		DB::rollback();
 		Logger::log("Error saving permissions (3): ".$e->getMessage()."\n".$e->getTraceAsString());
 	}
+	
+	debug_log("Before firing hooks", "permissions_debug.log");
 	
 	// fire hooks
 	try {
@@ -167,16 +180,20 @@
 	}
 	
 	// remove contact object from members where permissions were deleted
-	$user = Contacts::findOne(array('conditions' => 'permission_group_id='.$pg_id));
-	if ($user instanceof Contact) {
-		$to_remove = array();
-		foreach ($all_perm_deleted as $m_id => $must_remove) {
-			if ($must_remove) $to_remove[] = $m_id;
+	if (isset($all_perm_deleted) && is_array($all_perm_deleted)) {
+		$user = Contacts::instance()->findOne(array('conditions' => 'permission_group_id='.$pg_id));
+		if ($user instanceof Contact) {
+			$to_remove = array();
+			foreach ($all_perm_deleted as $m_id => $must_remove) {
+				if ($must_remove) $to_remove[] = $m_id;
+			}
+			ObjectMembers::removeObjectFromMembers($user, logged_user(), null, $to_remove);
 		}
-		ObjectMembers::removeObjectFromMembers($user, logged_user(), null, $to_remove);
 	}
 	
 	@unlink($permissions_filename);
 	@unlink($sys_permissions_filename);
 	@unlink($mod_permissions_filename);
 	@unlink($root_permissions_filename);
+	
+	debug_log("End saving permissions", "permissions_debug.log");

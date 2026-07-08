@@ -9,6 +9,8 @@
 		$report_data['date_type'] = 4;
 	}
 	if (!isset($conditions)) $conditions = array();
+	$can_see_billing_info = true;
+	Hook::fire('get_can_see_billing_information', array('user'=>logged_user()), $can_see_billing_info);
 ?>
 <form style='height:100%;background-color:white' class="internalForm" action="<?php echo get_url('reporting', 'total_task_times') ?>" method="post" enctype="multipart/form-data">
 
@@ -46,12 +48,23 @@
 			<td><span class="bold"><?php echo lang("date") ?>:&nbsp;</span></td>
 			<td align='left'><?php 
 				echo select_box('report[date_type]', array(
+
 					option_tag(lang('today'), 1, array_var($report_data, "date_type") == 1 ? array('selected' => 'selected'):null),
+					option_tag(lang('yesterday'), 11, array_var($report_data, "date_type") == 11 ? array('selected' => 'selected'):null),
+					
 					option_tag(lang('this week'), 2, array_var($report_data, "date_type") == 2 ? array('selected' => 'selected'):null),
 					option_tag(lang('last week'), 3, array_var($report_data, "date_type") == 3 ? array('selected' => 'selected'):null),
+					
+					option_tag(lang('First half month+'), 7, array_var($report_data, "date_type") == 7 ? array('selected' => 'selected'):null),
+					option_tag(lang('Second half month+'), 8, array_var($report_data, "date_type") == 8 ? array('selected' => 'selected'):null),
+					option_tag(lang('First half of last month+'), 9, array_var($report_data, "date_type") == 9 ? array('selected' => 'selected'):null),
+					option_tag(lang('Second half of last month+'), 10, array_var($report_data, "date_type") == 10 ? array('selected' => 'selected'):null),
 					option_tag(lang('this month'), 4, array_var($report_data, "date_type") == 4 ? array('selected' => 'selected'):null),
 					option_tag(lang('last month'), 5, array_var($report_data, "date_type") == 5 ? array('selected' => 'selected'):null),
+
+					option_tag(lang('year to date'), 12, array_var($report_data, "date_type") == 12 ? array('selected' => 'selected'):null),
 					option_tag(lang('select dates...'), 6, array_var($report_data, "date_type") == 6 ? array('selected' => 'selected'):null)
+
 				), array('onchange' => 'og.dateselectchange(this)'));
 			?></td>
 		</tr>
@@ -110,7 +123,7 @@
 					<select id="<?php echo $genid ?>group_by_<?php echo $i ?>" name="report[group_by_<?php echo $i ?>]" )">
 						<option value="0"<?php if ($gbVal == null) echo ' selected="selected"' ?>><?php echo lang('none') ?></option>
 						<option value="rel_object_id"<?php if ($gbVal == "rel_object_id") echo ' selected="selected"' ?>><?php echo lang('task')?></option>
-						<option value="contact_id"<?php if ($gbVal == "contact_id") echo ' selected="selected"' ?>><?php echo lang('person')?></option>
+						<option value="contact_id"<?php if ($gbVal == "contact_id") echo ' selected="selected"' ?>><?php echo lang('user')?></option>
 						<option value="priority"<?php if ($gbVal == "priority") echo ' selected="selected"' ?>><?php echo lang('priority')?></option>
 						<option value="milestone_id"<?php if ($gbVal == "milestone_id") echo ' selected="selected"' ?>><?php echo lang('milestone')?></option>
 						<?php
@@ -131,6 +144,7 @@
 						<option value="0"<?php if ($gbVal == null) echo ' selected="selected"' ?>><?php echo lang('none') ?></option>
 						<option value="contact_id"<?php if ($gbVal == "contact_id") echo ' selected="selected"' ?>><?php echo lang('user')?></option>
 						<option value="rel_object_id"<?php if ($gbVal == "rel_object_id") echo ' selected="selected"' ?>><?php echo lang('task')?></option>
+						<option value="first_level_task_only"<?php if ($gbVal == "first_level_task_only") echo ' selected="selected"' ?>><?php echo lang('first level task only')?></option>
 						<?php
 							$gbs = array();
 							Hook::fire('total_task_timeslots_group_by_criterias', null, $gbs);
@@ -154,7 +168,7 @@
 		</tr>
 		<?php } ?>
 		
-		<?php if ($has_billing && can_manage_billing(logged_user())) {?>
+		<?php if ($has_billing && can_manage_billing(logged_user()) && $can_see_billing_info) {?>
 		<tr style='height:30px;'>
 			<td><span class="bold"><?php echo lang('show billing information') ?></span></td>
 			<td align='left' style="padding-left:10px;">
@@ -162,10 +176,28 @@
 			</td>
 		</tr>
 		<?php } ?>
+		
+		<?php $null = null; Hook::fire('render_more_total_task_times_report_params', $report_data, $null); ?>
+		
+		
 		<tr style='height:30px;'>
 			<td><span class="bold"><?php echo lang('show estimated time column') ?></span></td>
 			<td align='left' style="padding-left:10px;">
 				<?php echo checkbox_field('report[show_estimated_time]', array_var($report_data, 'show_estimated_time', true), array("id" => "report[show_estimated_time]")); ?> 
+			</td>
+		</tr>
+		
+		<tr style='height:30px;' id="<?php echo $genid?>task_status_row">
+			<td><span class="bold"><?php echo lang('task status') ?></span></td>
+			<td align='left' style="padding: 12px 0 0 0;"><?php
+				$sel_status = array_var($report_data, "task_status", 'all');
+				$options = array();
+				$options[] = option_tag('-- ' . lang('all tasks') . ' --', 'all', $sel_status == 'all' ? array('selected' => 'selected') : null);
+				$options[] = option_tag(lang('pending'), 'pending', $sel_status == 'pending' ? array('selected' => 'selected') : null);
+				$options[] = option_tag(lang('completed'), 'completed', $sel_status == 'completed' ? array('selected' => 'selected') : null);
+				echo select_box('report[task_status]', $options, array('style' => 'float:left;'));
+			?>
+				<div class="desc" style="width:75%; float:left; margin-left:10px;"><?php echo lang('time report task status desc')?></div>
 			</td>
 		</tr>
 		

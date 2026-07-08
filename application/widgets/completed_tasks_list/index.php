@@ -13,6 +13,8 @@ $tasks_result = ProjectTasks::instance()->listing(array(
 	"order" => "completed_on",
 	"order_dir" => "DESC",
 	"extra_conditions" => " AND is_template = 0 AND completed_by_id > 0 $task_assignment_conditions",
+	"fire_additional_data_hook" => false,
+	"count_results" => false,
 	"limit" => $limit + 1,
 ));
 
@@ -31,7 +33,7 @@ if (count($active_members) > 0) {
 	foreach ($active_members as $member) {
 		$mnames[] = clean($member->getName());
 	}
-	$widget_title = lang('completed tasks'). ' '. lang('in').' '. implode(", ", $mnames);
+	$widget_title = lang('completed tasks');
 }
 
 if ($tasks_result->total > 0) {

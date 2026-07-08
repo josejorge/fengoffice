@@ -27,6 +27,8 @@ ogTimeTimeslot = function(){
 	this.description = '';
 	this.taskName;
 	this.otid;
+	
+	this.additional_data = {};
 }
 
 ogTimeTimeslot.prototype.setFromTdata = function(tdata){
@@ -45,6 +47,8 @@ ogTimeTimeslot.prototype.setFromTdata = function(tdata){
 	
 	if (tdata.desc)	this.description = tdata.desc; else this.description = '';
 	if (tdata.tn)	this.taskName = tdata.tn; else this.taskName = null;
+	
+	if (tdata.additional_data) this.additional_data = tdata.additional_data;
 }
 
 
@@ -136,7 +140,8 @@ ogTimeManager.GetNewTimeslotParameters = function(genid){
 	parameters["timeslot[date]"] = Ext.getCmp(genid + "timeslot[date]Cmp").getValue().format(og.preferences['date_format']);
 
 	parameters["timeslot[hours]"] = document.getElementById(genid + 'tsHours').value;
-        parameters["timeslot[minutes]"] = document.getElementById(genid + 'tsMinutes').value;
+	parameters["timeslot[minutes]"] = document.getElementById(genid + 'tsMinutes').value;
+	parameters["timeslot[start_time]"] = '08:00';
 	parameters["timeslot[description]"] = document.getElementById(genid + 'tsDesc').innerHTML;
 	var userSel = document.getElementById(genid + 'tsUser');
 	if (userSel){
@@ -386,7 +391,7 @@ ogTimeManager.executeAction = function(actionName, ids, options){
 			"options": options
 		},
 		callback: function(success, data) {
-			if (success && ! data.errorCode) {
+			if (success && ! data.errorCode && data.tasks) {
 				for (var i = 0; i < data.tasks.length; i++){
 					var tdata = data.tasks[i];
 					/*if (actionName == 'close_work')
@@ -498,4 +503,14 @@ ogTimeManager.renderUserCombo = function(genid){
 		});
 	}
 	return null;
+}
+
+ogTimeManager.start_new_clock = function () {
+
+
+    execute_action: function (action, id) {
+        og.openLink(og.getUrl('timeslot', action, {id: id}));
+    }
+
+
 }

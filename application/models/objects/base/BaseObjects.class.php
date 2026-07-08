@@ -25,7 +25,9 @@
     	'trashed_on' => DATA_TYPE_DATETIME, 
     	'trashed_by_id' => DATA_TYPE_INTEGER, 
     	'archived_on' => DATA_TYPE_DATETIME, 
-    	'archived_by_id' => DATA_TYPE_INTEGER
+    	'archived_by_id' => DATA_TYPE_INTEGER,
+	    'timezone_id' => DATA_TYPE_INTEGER,
+	    'timezone_value' => DATA_TYPE_INTEGER,
     );
   
     /**
@@ -34,7 +36,8 @@
     * @return BaseObjects 
     */
     function __construct() {
-      parent::__construct('Object', 'objects', true);
+		Hook::fire('object_definition', 'FengObject', self::$columns);
+      parent::__construct('FengObject', 'objects', true);
     } // __construct
     
     // -------------------------------------------------------
@@ -93,6 +96,7 @@
       return 'id';
     } // getAutoIncrementColumn
     
+    
     // -------------------------------------------------------
     //  Finders
     // -------------------------------------------------------
@@ -125,7 +129,7 @@
     *
     * @access public
     * @param array $arguments
-    * @return one or Objects objects
+    * @return array or Objects objects
     */
     function findAll($arguments = null) {
       if(isset($this) && instance_of($this, 'Objects')) {
@@ -156,7 +160,7 @@
     * @access public
     * @param mixed $id
     * @param boolean $force_reload If true cache will be skipped and data will be loaded from database
-    * @return Object 
+    * @return FengObject 
     */
     function findById($id, $force_reload = false) {
       if(isset($this) && instance_of($this, 'Objects')) {
@@ -210,7 +214,7 @@
     * @param integer $current_page Current page number
     * @return array
     */
-    function paginate($arguments = null, $items_per_page = 10, $current_page = 1) {
+    function paginate($arguments = null, $items_per_page = 10, $current_page = 1, $count = null) {
       if(isset($this) && instance_of($this, 'Objects')) {
         return parent::paginate($arguments, $items_per_page, $current_page);
       } else {
@@ -223,7 +227,7 @@
     *
     * @return Objects 
     */
-    function instance() {
+    static function instance() {
       static $instance;
       if(!instance_of($instance, 'Objects')) {
         $instance = new Objects();

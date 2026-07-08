@@ -31,12 +31,16 @@ class Env {
 	 * @return null
 	 * @throws LibraryDnxError
 	 */
-	static function useLibrary($library) {
+	static function useLibrary($library, $plugin = '') {
 		static $included = array();
 		if(isset($included[$library]) && $included[$library]) return;
 
-		$library_path = ENVIRONMENT_PATH . "/library/$library/";
-		if(!file_exists($library_path)) $library_path = ROOT . "/library/$library/";
+		if ($plugin != '' && Plugins::instance()->isActivePlugin($plugin)) {
+			$library_path = PLUGIN_PATH . "/$plugin/library/$library/";
+		} else {
+			$library_path = ENVIRONMENT_PATH . "/library/$library/";
+			if(!file_exists($library_path)) $library_path = ROOT . "/library/$library/";
+		}
 
 		if(!is_dir($library_path)) throw new LibraryDnxError($library);
 
@@ -103,7 +107,7 @@ class Env {
 	 */
 	static function executeAction($controller_name, $action) {
    		$max_users = config_option('max_users');
-		if ($max_users && Contacts::count() > $max_users) {
+		if ($max_users && Contacts::instance()->count() > $max_users) {
 	        echo lang("error").": ".lang("maximum number of users exceeded error");
 	        return;
     	}

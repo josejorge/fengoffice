@@ -10,8 +10,12 @@
 			<span class="breadcrumb"></span>
 				<script>
 					<?php $crumbOptions = $memPath;
-					$crumbJs = " og.getCrumbHtml($crumbOptions) ";?>
-					var crumbHtml = <?php echo $crumbJs;?>;
+					$crumbJs = " og.getEmptyCrumbHtml($crumbOptions,'.breadcrumb-container', og.breadcrumbs_skipped_dimensions) ";?>
+					
+					var crumbHtml = "<div class='breadcrumb-container' style='display: inline-block;min-width: 250px;'>";
+					crumbHtml += <?php echo $crumbJs;?>;
+					crumbHtml += "</div>";
+					
 					$("#result-item<?php echo $id?> .breadcrumb").html(crumbHtml);
 				</script>
 			<span class="footers_links">

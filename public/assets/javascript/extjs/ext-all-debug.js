@@ -1226,7 +1226,7 @@ Ext.util.Observable.prototype = {
     
     purgeListeners : function(){
         for(var evt in this.events){
-            if(typeof this.events[evt] == "object"){
+            if(typeof this.events[evt] == "object" && typeof(this.events[evt].clearListeners) == 'function'){
                  this.events[evt].clearListeners();
             }
         }
@@ -10092,6 +10092,7 @@ Ext.extend(Ext.dd.DragSource, Ext.dd.DDProxy, {
     
     onValidDrop : function(target, e, id){
         this.hideProxy();
+
         if(this.afterValidDrop){
             
             this.afterValidDrop(target, e, id);
@@ -20582,7 +20583,7 @@ Ext.PagingToolbar = Ext.extend(Ext.Toolbar, {
                 this.emptyMsg :
                 String.format(
                     this.displayMsg,
-                    this.cursor+1, this.cursor+count, this.store.getTotalCount()
+                    this.cursor+1, this.cursor+count-1, this.store.getTotalCount()
                 );
             this.displayEl.update(msg);
         }

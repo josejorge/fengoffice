@@ -144,6 +144,51 @@
       return $this->setColumnValue('ignore_context', $value);
     } // setIgnoreContext() 
     
+    
+    
+    /**
+     * Return value of 'is_default' field
+     *
+     * @access public
+     * @param void
+     * @return boolean
+     */
+    function getIsDefault() {
+    	return $this->getColumnValue('is_default');
+    }
+    
+    /**
+     * Set value of 'is_default' field
+     *
+     * @access public
+     * @param string $value
+     * @return boolean
+     */
+    function setIsDefault($value) {
+    	return $this->setColumnValue('is_default', $value);
+    }
+    
+    /**
+     * Return value of 'function_url' field
+     *
+     * @access public
+     * @param void
+     * @return boolean
+     */
+    function getFunctionUrl() {
+    	return $this->getColumnValue('function_url');
+    }
+    
+    /**
+     * Set value of 'function_url' field
+     *
+     * @access public
+     * @param string $value
+     * @return boolean
+     */
+    function setFunctionUrl($value) {
+    	return $this->setColumnValue('function_url', $value);
+    }
 
     /**
     * Return manager instance

@@ -140,9 +140,9 @@ abstract class BaseProjectMilestones extends ContentDataObjects {
     */
     function getTemplateObjectProperties() {
     	return array(
-    		array('id' => 'name', 'type' => self::getColumnType('name')),
-    		array('id' => 'description', 'type' => self::getColumnType('description')),
-    		array('id' => 'due_date', 'type' => self::getColumnType('due_date')),
+    		array('id' => 'name', 'type' => self::instance()->getColumnType('name')),
+    		array('id' => 'description', 'type' => self::instance()->getColumnType('description')),
+    		array('id' => 'due_date', 'type' => self::instance()->getColumnType('due_date')),
     	);
     } // getTemplateObjectProperties
 
@@ -275,7 +275,7 @@ abstract class BaseProjectMilestones extends ContentDataObjects {
 	 * @param integer $current_page Current page number
 	 * @return array
 	 */
-	function paginate($arguments = null, $items_per_page = 10, $current_page = 1) {
+	function paginate($arguments = null, $items_per_page = 10, $current_page = 1, $count = null) {
 		if(isset($this) && instance_of($this, 'ProjectMilestones')) {
 			return parent::paginate($arguments, $items_per_page, $current_page);
 		} else {
@@ -290,7 +290,7 @@ abstract class BaseProjectMilestones extends ContentDataObjects {
 	 *
 	 * @return ProjectMilestones
 	 */
-	function instance() {
+	static function instance() {
 		static $instance;
 		if(!instance_of($instance, 'ProjectMilestones')) {
 			$instance = new ProjectMilestones();

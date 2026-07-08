@@ -12,7 +12,7 @@ function get_company_data_tab_html($genid, $company, $renderContext, $company_da
 	return ob_get_clean();
 }
 
-function render_contact_data_tab($genid, $contact, $renderContext, $contact_data, $renderAddCompany = true){
+function render_contact_data_tab($genid, $contact, $renderContext, $contact_data, $renderAddCompany = true, $main_cp_count=0, $render_custom_prop = true){
 	$object = $contact;
 	
 	if ($contact instanceof Contact && !$contact->isNew()) {
@@ -26,19 +26,24 @@ function render_contact_data_tab($genid, $contact, $renderContext, $contact_data
 			'birthday'=> $contact->getBirthday(),
 			'comments' => $contact->getCommentsField(),
 			'picture_file' => $contact->getPictureFile(),
-			'timezone' => $contact->getTimezone(),
+			'user_timezone_id' => $contact->getUserTimezoneId(),
 			'company_id' => $contact->getCompanyId(),
 		); 
 		 
-		$all_phones = ContactTelephones::findAll(array('conditions' => 'contact_id = '.$contact->getId()));
+		$all_phones = ContactTelephones::instance()->findAll(array('conditions' => 'contact_id = '.$contact->getId()));
 		$contact_data['all_phones'] = $all_phones;
-		$all_addresses = ContactAddresses::findAll(array('conditions' => 'contact_id = '.$contact->getId()));
+		$all_addresses = ContactAddresses::instance()->findAll(array('conditions' => 'contact_id = '.$contact->getId()));
 		$contact_data['all_addresses'] = $all_addresses;
-		$all_webpages = ContactWebpages::findAll(array('conditions' => 'contact_id = '.$contact->getId()));
+		$all_webpages = ContactWebpages::instance()->findAll(array('conditions' => 'contact_id = '.$contact->getId()));
 		$contact_data['all_webpages'] = $all_webpages;
 		$all_emails = $contact->getNonMainEmails();
 		$contact_data['all_emails'] = $all_emails;
+		$contact_data['default_billing_email'] = $contact->getBillingEmail();
+
 	}
+	
+	tpl_assign('main_cp_count', $main_cp_count);
+	tpl_assign('render_custom_prop', $render_custom_prop);
 	
 	// telephone types
 	$all_telephone_types = TelephoneTypes::getAllTelephoneTypesInfo();
@@ -65,7 +70,7 @@ function render_company_data_tab($genid, $company, $renderContext, $company_data
 			
 		$company_data = array(
 			'first_name' => $company->getFirstName(),
-			'timezone' => $company->getTimezone(),
+			'user_timezone_id' => $company->getUserTimezoneId(),
 			'email' => $company->getEmailAddress(),
 			'comments' => $company->getCommentsField(),
 		); // array
@@ -83,14 +88,20 @@ function render_company_data_tab($genid, $company, $renderContext, $company_data
 		$all_email_types = EmailTypes::getAllEmailTypesInfo();
 		tpl_assign('all_email_types', $all_email_types);
 			
-		$all_phones = ContactTelephones::findAll(array('conditions' => 'contact_id = '.$company->getId()));
+		$all_phones = ContactTelephones::instance()->findAll(array('conditions' => 'contact_id = '.$company->getId()));
 		$company_data['all_phones'] = $all_phones;
-		$all_addresses = ContactAddresses::findAll(array('conditions' => 'contact_id = '.$company->getId()));
+		$all_addresses = ContactAddresses::instance()->findAll(array('conditions' => 'contact_id = '.$company->getId()));
 		$company_data['all_addresses'] = $all_addresses;
-		$all_webpages = ContactWebpages::findAll(array('conditions' => 'contact_id = '.$company->getId()));
+		$all_webpages = ContactWebpages::instance()->findAll(array('conditions' => 'contact_id = '.$company->getId()));
 		$company_data['all_webpages'] = $all_webpages;
 		$all_emails = $company->getNonMainEmails();
 		$company_data['all_emails'] = $all_emails;
+
+		$mainEmailData = $company->getMainEmails();
+		if($mainEmailData)
+		{
+			$company_data['default_billing_email'] = $mainEmailData[0]->getDefaultEmail();
+		}
 	}
 	
 	// telephone types

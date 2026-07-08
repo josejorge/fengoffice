@@ -63,7 +63,7 @@ class TemplateTasks extends BaseTemplateTasks {
 		if ($only_parent_task_templates)
 			$conditions .= "  and `parent_id` = 0  ";
 		$order_by = "`title` ASC";
-		$tasks = TemplateTasks::find ( array ('conditions' => $conditions, 'order' => $order_by ) );
+		$tasks = TemplateTasks::instance()->find ( array ('conditions' => $conditions, 'order' => $order_by ) );
 		if (! is_array ( $tasks ))
 			$tasks = array ();
 		return $tasks;
@@ -77,7 +77,7 @@ class TemplateTasks extends BaseTemplateTasks {
 		
 		$conditions = " `template_id` = $template_id";
 		$conditions .= "  AND `parent_id` = 0  ";
-		$tasks = TemplateTasks::find ( array ('conditions' => $conditions) );
+		$tasks = TemplateTasks::instance()->find ( array ('conditions' => $conditions) );
 		if (! is_array ( $tasks ))
 			$tasks = array ();
 		return $tasks;
@@ -90,7 +90,7 @@ class TemplateTasks extends BaseTemplateTasks {
 	static function getAllTaskTemplatesBySessionId($session_id) {
 	
 		$conditions = "`session_id` = $session_id";
-		$tasks = TemplateTasks::find ( array ('conditions' => $conditions) );
+		$tasks = TemplateTasks::instance()->find ( array ('conditions' => $conditions) );
 		if (! is_array ( $tasks ))
 			$tasks = array ();
 		return $tasks;
@@ -128,9 +128,9 @@ class TemplateTasks extends BaseTemplateTasks {
 	 */
 	function getRangeTasksByUser(DateTimeValue $date_start, DateTimeValue $date_end, $assignedUser, $task_filter = null, $archived = false) {
 		
-		$from_date = new DateTimeValue ( $date_start->getTimestamp () - logged_user()->getTimezone() * 3600 );
+		$from_date = new DateTimeValue ( $date_start->getTimestamp () - logged_user()->getUserTimezoneValue());
 		$from_date = $from_date->beginningOfDay ();
-		$to_date = new DateTimeValue ( $date_end->getTimestamp () - logged_user()->getTimezone() * 3600);
+		$to_date = new DateTimeValue ( $date_end->getTimestamp () - logged_user()->getUserTimezoneValue());
 		$to_date = $to_date->endOfDay ();
 		
 		$assignedFilter = '';
@@ -352,7 +352,7 @@ class TemplateTasks extends BaseTemplateTasks {
 		// Execute query and build the resultset	
 	    $rows = DB::executeAll($sql);
 		foreach ($rows as $row) {
-    		$task =  TemplateTasks::findById($row['id']);
+    		$task =  TemplateTasks::instance()->findById($row['id']);
     		if ($task && $task instanceof TemplateTask) {
     			if($task->getDueDate()){
 	    			$k  = "#".$task->getDueDate()->getTimestamp().$task->getId();
@@ -400,17 +400,17 @@ class TemplateTasks extends BaseTemplateTasks {
 		
 		$related = array_var($this->cached_related, $task_id, array());
 		if (count($related) > 0) {
-			return self::findAll(array('conditions' => 'object_id IN ('.implode(',', $related).')'));
+			return self::instance()->findAll(array('conditions' => 'object_id IN ('.implode(',', $related).')'));
 		}
 		return array();
 	}
 
 	function findByRelated($task_id) {
-		return TemplateTasks::findAll(array('conditions' => array('`original_task_id` = ?', $task_id)));
+		return TemplateTasks::instance()->findAll(array('conditions' => array('`original_task_id` = ?', $task_id)));
 	}
 
 	function findByTaskAndRelated($task_id,$original_task_id) {
-		return TemplateTasks::findAll(array('conditions' => array('(`original_task_id` = ? OR `object_id` = ?) AND `object_id` <> ?', $original_task_id,$original_task_id,$task_id)));
+		return TemplateTasks::instance()->findAll(array('conditions' => array('(`original_task_id` = ? OR `object_id` = ?) AND `object_id` <> ?', $original_task_id,$original_task_id,$task_id)));
 	}
 	
 	
@@ -447,7 +447,7 @@ class TemplateTasks extends BaseTemplateTasks {
 			'cid' => (int)$raw_data['created_by_id'],
 			'otype' => $raw_data['object_subtype'],
 			'pc' => (int)$raw_data['percent_completed'],
-			'memPath' => str_replace('"',"'", str_replace("'", "\'", json_encode($tmp_task->getMembersIdsToDisplayPath())))
+			'memPath' => str_replace('"',"'", escape_character(json_encode($tmp_task->getMembersIdsToDisplayPath())))
 		);
 
 		$result['mas'] = (int)array_var($raw_data, 'multi_assignment');
@@ -475,13 +475,19 @@ class TemplateTasks extends BaseTemplateTasks {
 			$result['cbid'] = (int)$raw_data['completed_by_id'];
 			$result['con'] = strtotime($raw_data['completed_on']);;
 		}
+		
+		if (isset($raw_data['timezone_id']) && isset($raw_data['timezone_value'])) {
+			$tz_offset = Timezones::getTimezoneOffsetToApply($raw_data);
+		} else {
+			$tz_offset = Timezones::getTimezoneOffset(logged_user()->getUserTimezoneId());
+		}
 			
 		if ($raw_data['due_date'] != EMPTY_DATETIME) {
-			$result['dd'] = strtotime($raw_data['due_date']) + logged_user()->getTimezone() * 3600;
+			$result['dd'] = strtotime($raw_data['due_date']) + $tz_offset;
 			$result['udt'] = $raw_data['use_due_time'] ? 1 : 0;
 		}
 		if ($raw_data['start_date'] != EMPTY_DATETIME) {
-			$result['sd'] = strtotime($raw_data['start_date']) + logged_user()->getTimezone() * 3600;
+			$result['sd'] = strtotime($raw_data['start_date']) + $tz_offset;
 			$result['ust'] = $raw_data['use_start_time'] ? 1 : 0;
 		}
 
@@ -490,7 +496,7 @@ class TemplateTasks extends BaseTemplateTasks {
 		if ($time_estimate > 0) $result['et'] = DateTimeValue::FormatTimeDiff(new DateTimeValue(0), new DateTimeValue($time_estimate * 60), 'hm', 60) ;
 
 
-		$result['tz'] = logged_user()->getTimezone() * 3600;
+		$result['tz'] = logged_user()->getUserTimezoneValue();
 
 		$ot = $tmp_task->getOpenTimeslots();
 

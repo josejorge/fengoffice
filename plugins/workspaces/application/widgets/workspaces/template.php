@@ -1,16 +1,18 @@
 <?php 
 $ws_dim = Dimensions::findByCode('workspaces');
 $row_cls = "";
-$add_button_text = count($data_ws) > 0 ? lang('add new workspace') : lang('add your first workspace');
 $no_objects_text = count($data_ws) > 0 ? '' : lang('you have no workspaces yet');
 $ws_widget = Widgets::instance()->findById('workspaces');
 $section = $ws_widget instanceof Widget && in_array($ws_widget->getDefaultSection(), array('left','right')) ? $ws_widget->getDefaultSection() : 'right';
+$cot = ObjectTypes::findByName('workspace');
+$c_name = Members::getTypeNameToShowByObjectType($ws_dim->getId(), $cot->getId());
+$add_button_text = count($data_ws) > 0 ? lang('add new workspace',$c_name) : lang('add your first workspace',$c_name);
 ?>
 
 <div class="ws-widget widget">
 
 	<div class="widget-header" onclick="og.dashExpand('<?php echo $genid?>');">
-		<div class="widget-title"><?php echo lang('workspaces')?></div>
+		<div class="widget-title"><?php echo $c_name ?></div>
 		<div class="dash-expander ico-dash-expanded" id="<?php echo $genid; ?>expander"></div>
 	</div>
 	
@@ -63,7 +65,7 @@ $section = $ws_widget instanceof Widget && in_array($ws_widget->getDefaultSectio
 			<div class="separator"></div>
 		<?php endif; ?>		
 		<?php if ($no_objects_text != '') : ?><div class="no-obj-widget-msg"><?php echo $no_objects_text ?></div><?php endif; ?>
-		<button title="<?php echo $add_button_text ?>" class="ws-more-details add-first-btn" style="float:<?php echo $section?>;">
+		<button title="<?php echo $add_button_text ?>" class="ws-more-details add-first-btn" style="float:<?php echo $section?>; margin-top: 10px;">
 			<img src="public/assets/themes/default/images/16x16/add.png"/>&nbsp;<?php echo $add_button_text ?>
 		</button>
 		<div class="clear"></div>
@@ -80,6 +82,7 @@ $section = $ws_widget instanceof Widget && in_array($ws_widget->getDefaultSectio
 			og.openLink(og.getUrl('member','add'),{
 				get: {
 					'name': '',
+					'type': <?php echo $cot->getId(); ?>,
 					'dim_id': '<?php echo $ws_dim->getId()?>',
 					'parent': parent_id
 				}

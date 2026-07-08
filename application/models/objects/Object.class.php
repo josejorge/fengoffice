@@ -1,11 +1,13 @@
 <?php
 
 /**
- * Object class
+ * FengObject class
  *
- * @author Diego Castiglioni <diego.castiglioni@fengoffice.com>
+ * @author Diego Castiglioni
+ * @author Conrado Vina
+ * 
  */
-class Object extends BaseObject {
+class FengObject extends BaseObject {
 	
 	private $object_type = null;
 	
@@ -19,24 +21,40 @@ class Object extends BaseObject {
 	 * @return ObjectType
 	 */
 	function getType() {
-		return ObjectTypes::findById($this->getObjectTypeId());
+		return ObjectTypes::instance()->findById($this->getObjectTypeId());
 	}
 	
 	
 	function getObjectTypeName(){
 		if (!$this->object_type)
-			$this->object_type = ObjectTypes::findById($this->getObjectTypeId());
+			$this->object_type = ObjectTypes::instance()->findById($this->getObjectTypeId());
 		return $this->object_type instanceof ObjectType ? $this->object_type->getName() : "";
 	}
 
 	
 	function getArrayInfo($include_trash_info = false, $include_archive_info = false) {
+		$tz_offset = Timezones::getTimezoneOffsetToApplyFromArray(array('timezone_id' => $this->getTimezoneId(), 'timezone_value' => $this->getTimezoneValue()));
+		$tz_offset = $tz_offset / 3600;
+		
 		if ($this->getCreatedOn()){
-			$dateCreated = $this->getCreatedOn()->isToday() ? lang('today') ." ". format_time($this->getCreatedOn()) : format_datetime($this->getCreatedOn());
+			if ($this->getCreatedOn()->isToday()) {
+				$dateCreated = lang('today') ." ". format_time($this->getCreatedOn(), null, $tz_offset);
+				$dateCreatedToday = true;
+			} else {
+				$dateCreated = format_datetime($this->getCreatedOn(), null, $tz_offset);
+				$dateCreatedToday = false;
+			}
 		}
 		if ($this->getUpdatedOn()){
-			$dateUpdated = $this->getUpdatedOn()->isToday() ? lang('today') ." ". format_time($this->getUpdatedOn()) : format_datetime($this->getUpdatedOn());
+			if ($this->getUpdatedOn()->isToday()) {
+				$dateUpdated = lang('today') ." ". format_time($this->getUpdatedOn(), null, $tz_offset);
+				$dateUpdatedToday = true;
+			} else {
+				$dateUpdated = format_datetime($this->getUpdatedOn(), null, $tz_offset);
+				$dateUpdatedToday = false;
+			}
 		}
+		
 		$info = array(
 			'object_id' => $this->getId(),
 			'ot_id' => $this->getObjectTypeId(),
@@ -46,25 +64,31 @@ class Object extends BaseObject {
 			'createdBy' => $this->getCreatedByDisplayName(),
 			'createdById' => $this->getCreatedById(),
 			'dateCreated' => $dateCreated,
+			'dateCreated_today' => $dateCreatedToday,
 			'updatedBy' => $this->getUpdatedByDisplayName(),
 			'updatedById' => $this->getUpdatedById(),
 			'dateUpdated' => $dateUpdated,
-			'url' => $this->getViewUrl()
+			'dateUpdated_today' => $dateUpdatedToday,
+			'url' => $this->getViewUrl(),
+			'timezone_id' => $this->getTimezoneId(),
+			'timezone_value' => $this->getTimezoneValue(),
 		);
 		
 		if ($include_trash_info) {
-			$dateTrashed = $this->getTrashedOn() instanceof DateTimeValue ? ($this->getTrashedOn()->isToday() ? format_time($this->getTrashedOn()) : format_datetime($this->getTrashedOn())) : lang('n/a');
+			$dateTrashed = $this->getTrashedOn() instanceof DateTimeValue ? ($this->getTrashedOn()->isToday() ? format_time($this->getTrashedOn(), null, $tz_offset) : format_datetime($this->getTrashedOn(), null, $tz_offset)) : lang('n/a');
 			$info['deletedBy'] = $this->getTrashedByDisplayName();
 			$info['deletedById'] = $this->getColumnValue('trashed_by_id');
 			$info['dateDeleted'] = $dateTrashed;
 		}
 		if ($include_archive_info) {
-			$dateArchived = $this->getArchivedOn() instanceof DateTimeValue ? ($this->getArchivedOn()->isToday() ? format_time($this->getArchivedOn()) : format_datetime($this->getArchivedOn())) : lang('n/a');
-			$archived_by = Contacts::findById($this->getArchivedById());
+			$dateArchived = $this->getArchivedOn() instanceof DateTimeValue ? ($this->getArchivedOn()->isToday() ? format_time($this->getArchivedOn(), null, $tz_offset) : format_datetime($this->getArchivedOn(), null, $tz_offset)) : lang('n/a');
+			$archived_by = Contacts::instance()->findById($this->getArchivedById());
 			$info['archivedBy'] = $archived_by instanceof Contact ? $archived_by->getObjectName() : lang('n/a');
 			$info['archivedById'] = $this->getArchivedById();
 			$info['dateArchived'] = $dateArchived;
 		}
+		
+		Hook::fire('general_object_array_info_additional_columns', array('object' => $this), $info);
 		
 		return $info;
 	}

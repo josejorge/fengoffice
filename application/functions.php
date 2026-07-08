@@ -6,8 +6,6 @@
 // ---------------------------------------------------
 
 
-
-
 /**
  * Gets called, when an undefined class is being instanciated
  *d
@@ -33,17 +31,17 @@ function feng__autoload($load_class_name) {
 		$loader->addDir(ROOT . '/library');
 		
 		//TODO Pepe: No tengo la conexion ni las clases de DB en este momento.. me conecto derecho 
-		$temp_link  = mysql_connect(DB_HOST, DB_USER, DB_PASS) ;
-		mysql_select_db(DB_NAME) ;
-		$res = mysql_query("SELECT name FROM ".TABLE_PREFIX."plugins WHERE is_installed = 1;");
-		while ($row = mysql_fetch_object($res)) {	
+		$temp_link  = mysqli_connect(DB_HOST, DB_USER, DB_PASS) ;
+		mysqli_select_db($temp_link, DB_NAME) ;
+		$res = mysqli_query($temp_link, "SELECT name FROM ".TABLE_PREFIX."plugins WHERE is_installed = 1;");
+		while ($row = mysqli_fetch_object($res)) {	
 			$plugin_name =  strtolower($row->name) ;
 			$dir  = ROOT . '/plugins/'.$plugin_name.'/application' ;
 			if (is_dir($dir)) {
 				$loader->addDir($dir); 
 			}
 		}
-		mysql_close($temp_link);
+		mysqli_close($temp_link);
 		
 		
 		$loader->setIndexFilename(CACHE_DIR . '/autoloader.php');
@@ -86,7 +84,10 @@ function __shutdown() {
  */
 function __production_error_handler($code, $message, $file, $line) {
 	// Skip non-static method called staticly type of error...
-	if($code == 2048) {
+	if (($code == 8192 || $code == 2048) && version_compare(phpversion(), '5.6') >= 0) {
+		return;
+	}
+	if($code == 2048 && version_compare(phpversion(), '5.6') < 0) {
 		return;
 	} // if
 
@@ -135,13 +136,16 @@ function get_url($controller_name = null, $action_name = null, $params = null, $
 	}
 
 	$url_params = array('c=' . $controller, 'a=' . $action);
-
-	if(is_array($params)) {
+	if($params && is_array($params)) {
 		foreach($params as $param_name => $param_value) {
 			if(is_bool($param_value)) {
 				$url_params[] = $param_name . '=1';
 			} else {
-				$url_params[] = $param_name . '=' . urlencode($param_value);
+                if (is_array($param_value)) {
+                    $url_params[] = http_build_query([$param_name => $param_value]);
+                } else {
+                    $url_params[] = $param_name . '=' . urlencode($param_value);
+                }
 			}
 		}
 	}
@@ -202,7 +206,11 @@ function get_sandbox_url($controller_name = null, $action_name = null, $params =
  * @return string
  */
 function product_name() {
-	return PRODUCT_NAME;
+	$product_name = PRODUCT_NAME;
+	
+	Hook::fire('override_product_name', null, $product_name);
+	
+	return $product_name;
 } // product_name
 
 /**
@@ -336,7 +344,7 @@ function prepare_company_website_controller(PageController $controller, $layout 
 	} // if
 
 	$controller->setLayout($layout);
-	$controller->addHelper('form', 'breadcrumbs', 'pageactions', 'tabbednavigation', 'company_website', 'project_website', 'textile', 'dimension');
+	$controller->addHelper('form', 'breadcrumbs', 'pageactions', 'tabbednavigation', 'company_website', 'project_website', 'textile', 'dimension', 'custom_properties');
 } // prepare_company_website_controller
 
 // ---------------------------------------------------
@@ -348,7 +356,7 @@ function prepare_company_website_controller(PageController $controller, $layout 
  *
  * @access public
  * @param void
- * @return Company
+ * @return Contact
  */
 function owner_company() {
 	return CompanyWebsite::instance()->getCompany();
@@ -397,6 +405,15 @@ function personal_project() {
  */
 function active_context() {
 	return CompanyWebsite::instance()->getContext() ;
+}
+
+function active_context_is_empty() {
+    $context = CompanyWebsite::instance()->getContext();
+    $context_member_count = 0;
+    foreach ($context as $c) {
+        if ($c instanceof Member) $context_member_count++;
+    }
+    return $context_member_count;
 }
 
 function current_dimension_id() {
@@ -472,10 +489,52 @@ function active_context_members($full = true ) {
 function get_context_from_array($ids){
 	$context = array();
 	foreach ($ids as $id) {
-		$member = Members::findById($id) ;
+		$member = Members::instance()->findById($id) ;
 		$context[] = $member;
 	}
 	return $context ;
+}
+
+
+function active_context_can_contain_member_type($dimension_id, $member_type_id) {
+	$context = active_context();
+	$any_member_selected = false;
+
+	if (is_array($context)) {
+	  foreach ($context as $selection) {
+		
+		if ($selection instanceof Member) {
+			$any_member_selected = true;
+			
+			if ($selection->getDimensionId() == $dimension_id) {
+				// check if member type parameter can be descendant of the selected member type
+				$child_ots = DimensionObjectTypeHierarchies::getAllChildrenObjectTypeIds($dimension_id, $selection->getObjectTypeId());
+				return in_array($member_type_id, $child_ots);
+			}
+		}
+	  }
+	}
+	return !$any_member_selected;
+}
+
+
+/**
+ * Get the member from active_context by object_type
+ */
+
+function active_context_member_by_object_type($object_type_id) {
+	$context = active_context();
+	if (is_array($context)) {
+		foreach ($context as $selection) {
+			if ($selection instanceof Member) {
+				if ($selection->getObjectTypeId() == $object_type_id) {
+					return $selection;
+				}
+			}
+		}
+	}
+	return null;
+	
 }
 
 /**
@@ -589,9 +648,14 @@ function user_config_option($option, $default = null, $user_id = null, $options_
 	return $option_value;
 } // user_config_option
 
+/**
+ * @deprecated
+ * This function has to be fixed
+ */
 function user_has_config_option($option_name, $user_id = 0, $workspace_id = 0) {
 	//FIXME
 	return;
+	/*
 	if (!$user_id && logged_user() instanceof User) {
 		$user_id = logged_user()->getId();
 	} else {
@@ -599,15 +663,20 @@ function user_has_config_option($option_name, $user_id = 0, $workspace_id = 0) {
 	}
 	$option = UserWsConfigOptions::getByName($option_name);
 	if (!$option instanceof UserWsConfigOption) return false;
-	$value = UserWsConfigOptionValues::findById(array(
+	$value = UserWsConfigOptionValues::instance()->findById(array(
 		'option_id' => $option->getId(),
 		'user_id' => $user_id,
 		'workspace_id' => $workspace_id));
 	return $value instanceof UserWsConfigOptionValue;
+	*/
 }
 
+/**
+ * @deprecated
+ * This function has to be fixed
+ */
 function default_user_config_option($option, $default = null) {
-	return UserWsConfigOptions::getDefaultOptionValue($option, $default);
+	//return UserWsConfigOptions::getDefaultOptionValue($option, $default);
 }
 
 
@@ -664,6 +733,44 @@ function get_back_trace($return_array = false) {
 	return ($return_array ? $array : print_r($array, 1));
 }
 
+/**
+ * Log messages in cache/debug_log.php
+ * @param string $msg: message to log
+ * @param string $filename: name of the file where the log is saved in cache folder, if null then filename is 'debug_log.php'
+ */
+function debug_log($msg="", $filename=null) {
+	$do_debug = defined('USE_DEBUG_LOG') && USE_DEBUG_LOG;
+	if ($do_debug) {
+		$trace = get_back_trace(true);
+		$function = "";
+		$i=0;
+
+		$str = "\nDate: ".date('Y-m-d H:i:s')." - ";
+		foreach ($trace as $trace_str) {
+			$i++;
+			if (str_ends_with($trace_str, 'get_back_trace')) {
+				continue;
+			} else {
+				$str .= "File: ". substr($trace_str, 0, strrpos($trace_str, " - ")) ." - ";
+					
+				$current_fn_trace = array_var($trace, $i);
+				if ($current_fn_trace) {
+					$str .= "Function: ".substr($current_fn_trace, strrpos($current_fn_trace, " - ")+3) . "\n";
+				}
+					
+				break;
+			}
+		}
+
+		$str .= "Message: $msg\n--------------------\n";
+
+		$logfilename = CACHE_DIR."/". (is_null($filename) ? __FUNCTION__.".php" : $filename);
+		if (!file_exists($logfilename)) {
+			file_put_contents($logfilename, "<?php die(); ?>\n");
+		}
+		file_put_contents($logfilename, $str, FILE_APPEND);
+	}
+}
 
 // ---------------------------------------------------
 //  Encryption/Decryption
@@ -813,15 +920,20 @@ function module_enabled($module, $default = null) {
 }
 
 
-function create_user_from_email($email, $name, $type = 'guest', $send_notification = true) {
-	return create_user(array(
-		'username' => substr($email, 0, strpos($email, '@')),
-		'display_name' => trim($name),
-		'email' => $email,
-		'type' => $type,
-		'company_id' => owner_company()->getId(),
-		'send_email_notification' => $send_notification,
-	), '');
+function create_contact_from_email($email, $name) {
+	$c = Contacts::getByEmail($email);
+	if (!$c instanceof Contact) {
+		$pos = strpos($name, '@');
+		if ($pos !== false) {
+			$name = substr($name, 0, $pos);
+		}
+
+		$c = new Contact();
+		$c->setFirstName($name);
+		$c->save();
+		$c->addEmail($email, 'personal');
+		$c->addToSharingTable();
+	}
 }
 
 
@@ -854,19 +966,24 @@ function create_user($user_data, $permissionsString, $rp_permissions_data = arra
 		}	
 		$contact->setUsername(array_var($user_data, 'username'));
 		$contact->setTimezone(array_var($user_data, 'timezone'));
-		$user_from_contact = true;
+		$user_from_contact = false;
 	}
 	$contact->save();
 	if (is_valid_email(array_var($user_data, 'email'))) {
-		$user = Contacts::getByEmail(array_var($user_data, 'email'));
+		$user = Contacts::getByEmail(array_var($user_data, 'email'), null, true);
 		if(!$user)
 			$contact->addEmail(array_var($user_data, 'email'), 'personal', true);
 	}
 	
 	
 	//permissions
+	$additional_name = "";
+	$tmp_pg = PermissionGroups::instance()->findOne(array('conditions' => "`name`='User ".$contact->getId()." Personal'"));
+	if ($tmp_pg instanceof PermissionGroup) {
+		$additional_name = "_".gen_id();
+	}
 	$permission_group = new PermissionGroup();
-	$permission_group->setName('User '.$contact->getId().' Personal');
+	$permission_group->setName('User '.$contact->getId().$additional_name.' Personal');
 	$permission_group->setContactId($contact->getId());
 	$permission_group->setIsContext(false);
 	$permission_group->setType("permission_groups");
@@ -883,20 +1000,26 @@ function create_user($user_data, $permissionsString, $rp_permissions_data = arra
 
 	if ( can_manage_security(logged_user()) ) {
 		
-		$sp = new SystemPermission();
+		$sp = SystemPermissions::instance()->findById($permission_group->getId());
+		if (!$sp instanceof SystemPermission) {
+			$sp = new SystemPermission();
+			$sp->setPermissionGroupId($permission_group->getId());
+		}
 		if (!$user_from_contact) {
 			$rol_permissions=SystemPermissions::getRolePermissions(array_var($user_data, 'type'));
 			if (is_array($rol_permissions)) {
 				foreach($rol_permissions as $pr){
-					$sp->setPermission($pr);
+					if ($pr != 'permission_group_id'){
+						$sp->setPermission($pr);
+					}
 				}
 			}
 		}
-		$sp->setPermissionGroupId($permission_group->getId());
 
 		if (isset($user_data['can_manage_security'])) $sp->setCanManageSecurity(array_var($user_data, 'can_manage_security'));
 		if (isset($user_data['can_manage_configuration'])) $sp->setCanManageConfiguration(array_var($user_data, 'can_manage_configuration'));
 		if (isset($user_data['can_manage_templates'])) $sp->setCanManageTemplates(array_var($user_data, 'can_manage_templates'));
+		if (isset($user_data['can_instantiate_templates'])) $sp->setCanManageTemplates(array_var($user_data, 'can_instantiate_templates'));
 		if (isset($user_data['can_manage_time'])) $sp->setCanManageTime(array_var($user_data, 'can_manage_time'));
 		if (isset($user_data['can_add_mail_accounts'])) $sp->setCanAddMailAccounts(array_var($user_data, 'can_add_mail_accounts'));
 		if (isset($user_data['can_manage_dimensions'])) $sp->setCanManageDimensions(array_var($user_data, 'can_manage_dimensions'));
@@ -924,10 +1047,10 @@ function create_user($user_data, $permissionsString, $rp_permissions_data = arra
 			$permissions = array();
 			$default_permissions = RoleObjectTypePermissions::instance()->findAll(array('conditions' => 'role_id = '.$contact->getUserType()));
 			
-			$dimensions = Dimensions::findAll();
+			$dimensions = Dimensions::instance()->findAll();
 			foreach ($dimensions as $dimension) {
 				if ($dimension->getDefinesPermissions()) {
-					$cdp = ContactDimensionPermissions::findOne(array("conditions" => "`permission_group_id` = ".$contact->getPermissionGroupId()." AND `dimension_id` = ".$dimension->getId()));
+					$cdp = ContactDimensionPermissions::instance()->findOne(array("conditions" => "`permission_group_id` = ".$contact->getPermissionGroupId()." AND `dimension_id` = ".$dimension->getId()));
 					if (!$cdp instanceof ContactDimensionPermission) {
 						$cdp = new ContactDimensionPermission();
 						$cdp->setPermissionGroupId($contact->getPermissionGroupId());
@@ -937,7 +1060,8 @@ function create_user($user_data, $permissionsString, $rp_permissions_data = arra
 					$cdp->save();
 					
 					// contact member permisssion entries
-					$members = DB::executeAll('SELECT * FROM '.TABLE_PREFIX.'members WHERE dimension_id='.$dimension->getId());
+					$members = DB::executeAll('SELECT * FROM '.TABLE_PREFIX.'members 
+							WHERE dimension_id='.$dimension->getId()." AND archived_by_id=0");
 					foreach ($members as $member) {
 						foreach ($default_permissions as $p) {
 							// Add persmissions to sharing table
@@ -1074,7 +1198,7 @@ function create_user($user_data, $permissionsString, $rp_permissions_data = arra
 	
 	if($save_permissions){
 		//save_permissions($contact->getPermissionGroupId(), $contact->isGuest());
-		save_user_permissions_background(logged_user(), $contact->getPermissionGroupId(), $contact->isGuest());
+		save_user_permissions_background(logged_user(), $contact->getPermissionGroupId(), $contact->isGuest(), array(), false, true);
 	}
 	Hook::fire('after_user_add', $contact, $null);
 	
@@ -1088,17 +1212,18 @@ function create_user($user_data, $permissionsString, $rp_permissions_data = arra
 }
 
 // Warning don't use this function inside a mysql transaction, use it after comit.
-function send_notification($user_data, $contact_id){
-	$contact = Contacts::findById($contact_id);//$contact->getId()
+function send_notification($user_data, $contact_id, $token_valid_period=null){
+	$contact = Contacts::instance()->findById($contact_id);//$contact->getId()
 	$password = '';
 	// Send notification
 	try {
 		if (array_var($user_data, 'send_email_notification') && $contact->getEmailAddress()) {
 			if (array_var($user_data, 'password_generator', 'link') == 'link') {
 				// Generate link password
-				$user = Contacts::getByEmail(array_var($user_data, 'email'));
+				$user = Contacts::getByEmail(array_var($user_data, 'email'), null, true);
 				$token = sha1(gen_id() . (defined('SEED') ? SEED : ''));
-				$timestamp = time() + 60*60*24;
+				if (!$token_valid_period) $token_valid_period = 60*60*24; // 1 day
+				$timestamp = time() + $token_valid_period;
 				set_user_config_option('reset_password', $token . ";" . $timestamp, $user->getId());
 				Notifier::newUserAccountLinkPassword($contact, $password, $token);
 			} else {
@@ -1115,6 +1240,13 @@ function send_notification($user_data, $contact_id){
 function utf8_safe($text) {
 	$safe = html_entity_decode(htmlentities($text, ENT_COMPAT, "UTF-8"), ENT_COMPAT, "UTF-8");
 	return preg_replace('/[\xF0-\xF4][\x80-\xBF][\x80-\xBF][\x80-\xBF]/', "", $safe);
+}
+
+function utf8_encode_mime_header_value($text) {
+	$fName = str_starts_with($text, "=?") ? iconv_mime_decode($text, 0, "UTF-8") : utf8_safe($text);
+	if (trim($fName) == "" && strlen($text) > 0) $fName = utf8_encode($text);
+
+	return $fName;
 }
 
 function clean_csv_addresses($csv) {
@@ -1166,7 +1298,7 @@ function html_to_text($html) {
  * Returns an array with the enum values of an enum column
  * @param string $table: name of the table to check
  * @param string $column: name of the enum column to retrieve its values
- * @return An array with the enum values of an enum column.
+ * @return array with the enum values of an enum column.
  */
 function get_enum_values($table, $column) {
 	$sql = "SHOW COLUMNS FROM `$table` LIKE '$column';";
@@ -1181,7 +1313,7 @@ function get_enum_values($table, $column) {
 function get_user_dimensions_ids(){
 		
 	//All dimensions
-		$all_dimensions = Dimensions::findAll();
+		$all_dimensions = Dimensions::instance()->findAll();
 		$dimensions_to_show = array();
 		
 		foreach ($all_dimensions as $dim){
@@ -1211,7 +1343,7 @@ function build_context_array($context_plain) {
 					//cambiar
 					foreach ($members as $member) {
 						if ($member && is_numeric($member)) { 
-							$member = Members::findById($member) ;													
+							$member = Members::instance()->findById($member) ;													
 							if ($member instanceof Member ){
 								$context[] = $member ;
 							}
@@ -1386,7 +1518,7 @@ function feng_sort($array, $field = 'getName', $id = 'getId', $removeDuplicateId
 }
 
 function controller_exists($name, $plugin_id) {
-	$class_filename = ucfirst($name)."Controller.class.php";
+	$class_filename = Env::getControllerClass($name) . ".class.php";
 	if ($plugin_id && ($plugin = Plugins::instance()->findById($plugin_id)) instanceof Plugin ){
 		$plgName = $plugin->getName();
 		return file_exists(ROOT."/plugins/".$plgName."/application/controllers/".$class_filename);
@@ -1701,6 +1833,9 @@ function fodt2text($filename,$id) {
 }
 
 function readZippedXML($archiveFile, $dataFile, $type = null) {
+	if (!zip_supported()) {
+		return "";
+	}
     // Create new ZIP archive
     $zip = new ZipArchive;
 
@@ -1766,8 +1901,8 @@ function make_post_async($url, $params)	{
  */
 function get_table_columns($table_name) {
 	$cols = array();
-	$res = mysql_query("DESCRIBE `$table_name`", DB::connection()->getLink());
-	while($row = mysql_fetch_array($res)) {
+	$res = mysqli_query(DB::connection()->getLink(), "DESCRIBE `$table_name`");
+	while($row = mysqli_fetch_array($res)) {
 		$cols[] = $row['Field'];
 	}
 	return $cols;
@@ -1783,8 +1918,8 @@ function get_table_columns($table_name) {
  * @return boolean
  */
 function check_column_exists($table_name, $col_name) {
-	$res = mysql_query("DESCRIBE `$table_name`", DB::connection()->getLink());
-	while($row = mysql_fetch_array($res)) {
+    $res = mysqli_query(DB::connection()->getLink(), "DESCRIBE `$table_name`");
+	while($row = mysqli_fetch_array($res)) {
 		if ($row['Field'] == $col_name) return true;
 	}
 	return false;
@@ -1799,8 +1934,8 @@ function check_column_exists($table_name, $col_name) {
  * @return boolean
  */
 function checkTableExists($table_name) {
-	$res = mysql_query("SHOW TABLES", DB::connection()->getLink());
-	while ($row = mysql_fetch_array($res)) {
+    $res = mysqli_query(DB::connection()->getLink(), "SHOW TABLES");
+	while ($row = mysqli_fetch_array($res)) {
 		if ($row[0] == $table_name) return true;
 	}
 	return false;
@@ -1834,7 +1969,8 @@ function pdf_convert_and_download($html_filename, $download_filename=null, $orie
 	if (!$download_filename) $download_filename = gen_id() . '.pdf';
 	
 	//generate the pdf
-	$pdf_filename = convert_to_pdf($html_to_convert, $orientation, gen_id());
+	$pdf_data = convert_to_pdf($html_to_convert, $orientation, gen_id());
+	$pdf_filename = $pdf_data['name'];
 	
 	if($pdf_filename) {
 		include_once ROOT . "/library/browser/Browser.php";
@@ -1846,53 +1982,95 @@ function pdf_convert_and_download($html_filename, $download_filename=null, $orie
 	}
 }
 
-function convert_to_pdf($html_to_convert, $orientation='Protrait', $genid) {
+function convert_to_pdf($html_to_convert, $orientation='Portrait', $genid, $page_size="A4", $zoom='', $html_header_footer = array()) {
 	$pdf_filename = null;
 	
 	if(is_exec_available()){
 		//controlar q sea linux
 		$pdf_filename = $genid . "_pdf.pdf";
-		$pdf_path = "tmp/".$pdf_filename;
+		$pdf_path = ROOT."/tmp/".$pdf_filename;
 		
-		$tmp_html_path = "tmp/tmp_html_".$genid.".html";
+		file_put_contents($pdf_path, "");
+		
+		$temp_genid = gen_id();
+		
+		$tmp_html_path = ROOT."/tmp/tmp_html_".$temp_genid.".html";
 		file_put_contents($tmp_html_path, $html_to_convert);
-		
+
+		if($html_header_footer['header']){
+			$tmp_html_header_path = ROOT."/tmp/tmp_html_header_".$temp_genid.".html";
+			file_put_contents($tmp_html_header_path, $html_header_footer['header']);
+			$flag_header = " --header-html  \"".$tmp_html_header_path."\" ";
+		}else{
+			$flag_header = "";
+		}
+
+		if($html_header_footer['footer']){
+			$tmp_html_footer_path = ROOT."/tmp/tmp_html_footer_".$temp_genid.".html";
+			file_put_contents($tmp_html_footer_path, $html_header_footer['footer']);
+			$flag_footer = " --footer-left [page]/[topage] --footer-html  \"".$tmp_html_footer_path."\" ";
+		}else{
+			$flag_footer = "--footer-right [page]/[topage]";
+		}
+
 		if (!in_array($orientation, array('Portrait', 'Landscape'))) $orientation = 'Portrait';
 		
-		//convert png to pdf in background
-		exec("wkhtmltopdf -s A4 --encoding utf8 -O $orientation ".$tmp_html_path." ".$pdf_path." > /dev/null &", $result, $return_var);
+		$temp_pdf_name = ROOT."/tmp/".$temp_genid.".pdf";
+		
+		if (!in_array($page_size, array("A0","A1","A2","A3","A4","A5","Letter","Legal"))) {
+			$page_size = "A4";
+		}
+		
+		//convert to pdf in background
+		if (substr(php_uname(), 0, 7) == "Windows") {
+			if (!defined('WKHTMLTOPDF_PATH')) define('WKHTMLTOPDF_PATH', "C:\\Program Files\\wkhtmltopdf\\bin\\");
+			$command_location = with_slash(WKHTMLTOPDF_PATH) . "wkhtmltopdf";
+			$command = "\"$command_location\" -s $page_size --encoding utf8 $zoom -L 1 -R 1 ". $flag_header ." ". $flag_footer ." -O $orientation \"".$tmp_html_path."\" \"".$temp_pdf_name."\"";
+		} else {
+		    $command_location = (defined('WKHTMLTOPDF_PATH') ? with_slash(WKHTMLTOPDF_PATH) : "");
+		    $command = $command_location."wkhtmltopdf -s $page_size --encoding utf8 $zoom  -L 1 -R 1 ". $flag_header ."  ". $flag_footer ." -O $orientation \"".$tmp_html_path."\" \"".$temp_pdf_name."\"";
+		}
+
+		exec($command, $result, $return_var);
 		
 		if ($return_var > 0){
-			Logger::log("command not found convert",Logger::WARNING);
+			Logger::log("command not found convert: $command",Logger::WARNING);
 			return false;
 		}
-			
-		//wait for the file
-		$seconds = 8;
-		while (!file_exists(ROOT."/tmp/".$pdf_filename) && $seconds > 0){
-			sleep(1);
-			$seconds = $seconds - 1;
-		}
-		//give time to finish
-		sleep(2);
-			
+		
+		rename($temp_pdf_name, $pdf_path);
+		
 		//delete the png file
 		unlink($tmp_html_path);
+		if($html_header_footer['header']){
+			unlink($tmp_html_header_path);
+		}
+		if($html_header_footer['footer']){
+			unlink($tmp_html_footer_path);
+		}
 			
+		$file_path = ROOT."/tmp/".$pdf_filename;
+		
 		//check if pdf exist
-		if (!file_exists(ROOT."/tmp/".$pdf_filename)) {
+		if (!file_exists($file_path)) {
 			return false;
 		}
-		return $pdf_filename;
+		
+		clearstatcache(true, $file_path);
+		$filesize = filesize($file_path);
+		
+		$data = array('name' => $pdf_filename, 'size' => $filesize);
+		
+		return $data;
 	}
 	
 }
 
 
 /**
- * @param $picture: uploaded file data (taken from $_FILES)
+ * @param $picture: string uploaded file data (taken from $_FILES)
  * @param $crop_data: array with new x-y coords, width and height
- * @return The path to the new generated image 
+ * @return string The path to the new generated image 
  **/
 function process_uploaded_cropped_picture_file($picture, $crop_data) {
 
@@ -1902,7 +2080,7 @@ function process_uploaded_cropped_picture_file($picture, $crop_data) {
 			
 		$ext = strtolower(pathinfo($picture['name'], PATHINFO_EXTENSION));
 		if (in_array($ext, $valid_exts)) {
-			$path = 'tmp/' . uniqid() . '.' . $ext;
+			$path = ROOT . '/tmp/' . uniqid() . '.' . $ext;
 			$size = getimagesize($picture['tmp_name']);
 			
 			$x = (int) $crop_data['x'];
@@ -1940,10 +2118,19 @@ function process_uploaded_cropped_picture_file($picture, $crop_data) {
 				$nw = $nw / $p;
 				$nh = $nh / $p;
 			}
+			
+			// dont proces the image if there aren't changes in width and height
+			/*if ($w == $nw && $h == $nh) {
+				return $picture['tmp_name'];
+			}*/
 
 			$data = file_get_contents($picture['tmp_name']);
 			$vImg = imagecreatefromstring($data);
 			$dstImg = imagecreatetruecolor($nw, $nh);
+			// save transaparency
+			imagealphablending($dstImg, FALSE);
+			imagesavealpha($dstImg, TRUE);
+			
 			imagecopyresampled($dstImg, $vImg, 0, 0, $x, $y, $nw, $nh, $w, $h);
 			imagepng($dstImg, $path);
 			imagedestroy($dstImg);
@@ -1973,56 +2160,70 @@ function print_modal_json_response($data, $dont_process_response = true, $use_aj
 
 
 
-function associate_member_to_status_member($project_member, $old_project_status, $status_member_id, $status_dimension, $status_ot=null) {
+function associate_member_to_status_member($project_member, $old_project_status, $status_member_id, $status_dimension, $status_ot=null, $remove_prev_associations=true, $assoc_code=null) {
 
 	if ($status_dimension instanceof Dimension && in_array($status_dimension->getId(), config_option('enabled_dimensions'))) {
+		
+		// asociate project objects to the new project_status member, only for non manageable dimensions
+		if (!$status_dimension->getIsManageable() && $old_project_status != $status_member_id) {
+			
+			$object_type_cond = " AND (SELECT o.object_type_id FROM ".TABLE_PREFIX."objects o WHERE o.id=".TABLE_PREFIX."object_members.object_id) 
+				NOT IN (SELECT ot.id FROM ".TABLE_PREFIX."object_types ot WHERE ot.name LIKE 'template_%')";
 
-		// asociate project objects to the new project_status member
-		if ($old_project_status != $status_member_id) {
+			$object_members = ObjectMembers::instance()->findAll(array('conditions' => "member_id = ".$project_member->getId()." AND is_optimization=0 $object_type_cond"));
 
-			$object_members = ObjectMembers::instance()->findAll(array('conditions' => "member_id = ".$project_member->getId()." AND is_optimization=0"));
-
-			// remove objects from old project_type member
-			if ($old_project_status > 0) {
+			// if has old status or status removed => remove objects from old project_type member
+			if ($old_project_status > 0 || $status_member_id == 0 || $remove_prev_associations) {
 				foreach ($object_members as $om) {
 					$obj = Objects::findObject($om->getObjectId());
 					if ($obj instanceof ContentDataObject) {
-						ObjectMembers::removeObjectFromMembers($obj, logged_user(), null, array($old_project_status));
+						$mems_to_remove = array();
+						
+						if ($old_project_status > 0) {
+							$mems_to_remove = array($old_project_status);
+						}
+						
+						if (!is_numeric($status_member_id) || $status_member_id == 0 || $remove_prev_associations) {
+							// remove from all
+							$mems_to_remove = array_flat(DB::executeAll("
+								SELECT om.member_id FROM ".TABLE_PREFIX."object_members om
+		  						INNER JOIN ".TABLE_PREFIX."members m ON m.id=om.member_id
+		  						WHERE om.object_id = " . $obj->getId() . " AND m.dimension_id=".$status_dimension->getId()
+							));
+						}
+						
+						if (count($mems_to_remove) > 0) {
+							ObjectMembers::removeObjectFromMembers($obj, logged_user(), null, $mems_to_remove);
+						}
 					}
 				}
 			}
 
 			// add objects to new project_type member
 			if (is_numeric($status_member_id) && $status_member_id > 0) {
-				$member_to_add = Members::findById($status_member_id);
+				$member_to_add = Members::instance()->findById($status_member_id);
 				foreach ($object_members as $om) {
 					ObjectMembers::addObjectToMembers($om->getObjectId(), array($member_to_add));
 				}
-				
-				if ($member_to_add instanceof Member && $member_to_add->getObjectId()>0) {
-					$rel_obj = Objects::findObject($member_to_add->getObjectId());
-					if ($rel_obj instanceof ContentDataObject) {
-						ObjectMembers::addObjectToMembers($rel_obj->getId(), array($project_member));
-						$rel_obj->addToSharingTable();
-						$null=null; Hook::fire("after_auto_classifying_associated_object_of_member", array('obj' => $rel_obj, 'mem' => $project_member), $null);
-					}
-				}
+
+				classify_related_member_object_in_main_member($project_member, $member_to_add);
 			}
 			
 		}
 
+		$assoc_code_cond = $assoc_code ? " AND code='$assoc_code'" : '';
 
 		$member_dimension = $project_member->getDimension();
 
 		$a = DimensionMemberAssociations::instance()->findOne(array('conditions' => array('dimension_id=? AND object_type_id=? AND associated_dimension_id=?'.
-				($status_ot instanceof ObjectType ? ' AND associated_object_type_id='.$status_ot->getId() : ''),
+				($status_ot instanceof ObjectType ? ' AND associated_object_type_id='.$status_ot->getId() : '') . $assoc_code_cond,
 				$member_dimension->getId(), $project_member->getObjectTypeId(), $status_dimension->getId())));
 
 		// create relation between members and remove old relations
 		if ($a instanceof DimensionMemberAssociation) {
 			if (is_numeric($status_member_id) && $status_member_id > 0) {
 
-				$mpm = MemberPropertyMembers::findOne(array('id' => true, 'conditions' => array('association_id = ? AND member_id = ? AND property_member_id = ?', $a->getId(), $project_member->getId(), $status_member_id)));
+				$mpm = MemberPropertyMembers::instance()->findOne(array('id' => true, 'conditions' => array('association_id = ? AND member_id = ? AND property_member_id = ?', $a->getId(), $project_member->getId(), $status_member_id)));
 				if (is_null($mpm)) {
 					$sql = "INSERT INTO " . TABLE_PREFIX . "member_property_members (association_id, member_id, property_member_id, is_active, created_on, created_by_id)
 						VALUES (" . $a->getId() . "," . $project_member->getId() . "," . $status_member_id . ", 1, NOW()," . logged_user()->getId() . ");";
@@ -2031,19 +2232,21 @@ function associate_member_to_status_member($project_member, $old_project_status,
 				}
 
 			}
-			MemberPropertyMembers::instance()->delete('association_id = '.$a->getId().' AND member_id = '.$project_member->getId() . " AND property_member_id <> '$status_member_id'");
+			if ($remove_prev_associations) {
+				MemberPropertyMembers::instance()->delete('association_id = '.$a->getId().' AND member_id = '.$project_member->getId() . " AND property_member_id <> '$status_member_id'");
+			}
 		}
 		
 		
 		$a = DimensionMemberAssociations::instance()->findOne(array('conditions' => array('associated_dimension_id=? AND associated_object_type_id=? AND dimension_id=?'.
-				($status_ot instanceof ObjectType ? ' AND object_type_id='.$status_ot->getId() : ''),
+				($status_ot instanceof ObjectType ? ' AND object_type_id='.$status_ot->getId() : '') . $assoc_code_cond,
 				$member_dimension->getId(), $project_member->getObjectTypeId(), $status_dimension->getId())));
 		
 		// create relation between members and remove old relations
 		if ($a instanceof DimensionMemberAssociation) {
 			if (is_numeric($status_member_id) && $status_member_id > 0) {
 		
-				$mpm = MemberPropertyMembers::findOne(array('id' => true, 'conditions' => array('association_id = ? AND member_id = ? AND property_member_id = ?', $a->getId(), $project_member->getId(), $status_member_id)));
+				$mpm = MemberPropertyMembers::instance()->findOne(array('id' => true, 'conditions' => array('association_id = ? AND member_id = ? AND property_member_id = ?', $a->getId(), $project_member->getId(), $status_member_id)));
 				if (is_null($mpm)) {
 					$sql = "INSERT INTO " . TABLE_PREFIX . "member_property_members (association_id, member_id, property_member_id, is_active, created_on, created_by_id)
 						VALUES (" . $a->getId() . "," . $status_member_id . "," . $project_member->getId() . ", 1, NOW()," . logged_user()->getId() . ");";
@@ -2052,26 +2255,94 @@ function associate_member_to_status_member($project_member, $old_project_status,
 				}
 		
 			}
-			MemberPropertyMembers::instance()->delete('association_id = '.$a->getId().' AND property_member_id = '.$project_member->getId() . " AND member_id <> '$status_member_id'");
+			if ($remove_prev_associations) {
+				MemberPropertyMembers::instance()->delete('association_id = '.$a->getId().' AND property_member_id = '.$project_member->getId() . " AND member_id <> '$status_member_id'");
+			}
+		}
+
+		// trigger the associated members' object classification after adding the relation
+		if (is_numeric($status_member_id) && $status_member_id > 0) {
+			$related_member = Members::getMemberById($status_member_id);
+			if ($related_member instanceof Member) {
+				classify_related_member_object_in_main_member($project_member, $related_member);
+			}
 		}
 	}
 }
 
 
-function get_associated_status_member_id($member, $dimension, $ot=null) {
+function classify_related_member_object_in_main_member($main_member, $related_member) {
+
+	if ($main_member instanceof Member && $related_member instanceof Member && $related_member->getObjectId()>0) {
+		
+		$rel_obj = Objects::findObject($related_member->getObjectId());
+		if ($rel_obj instanceof ContentDataObject) {
+			
+			ObjectMembers::addObjectToMembers($rel_obj->getId(), array($main_member));
+			$rel_obj->addToSharingTable();
+			
+			$null=null; 
+			Hook::fire("after_auto_classifying_associated_object_of_member", array('obj' => $rel_obj, 'mem' => $main_member), $null);
+		}
+	}
+
+}
+
+
+function get_all_associated_status_member_ids($member, $dimension, $ot=null, $reverse=false, $assoc_code=null) {
+	$ids = array();
 	if ($member instanceof Member && $dimension instanceof Dimension) {
 		$member_dimension = $member->getDimension();
 		if (!$member_dimension instanceof Dimension) return 0;
-
-		$a = DimensionMemberAssociations::instance()->findOne(array('conditions' => array('dimension_id=? AND object_type_id=? AND associated_dimension_id=?'.
-				($ot instanceof ObjectType ? ' AND associated_object_type_id='.$ot->getId() : ''),
-				$member_dimension->getId(), $member->getObjectTypeId(), $dimension->getId())));
 		
-		// create relation between members and remove old relations
+		$assoc_code_cond = $assoc_code ? " AND code='$assoc_code'" : '';
+
+		if ($reverse) {
+			$a = DimensionMemberAssociations::instance()->findOne(array('conditions' => array('associated_dimension_id=? AND associated_object_type_id=? AND dimension_id=?'.
+				($ot instanceof ObjectType ? ' AND object_type_id='.$ot->getId() : '') . $assoc_code_cond,
+				$member_dimension->getId(), $member->getObjectTypeId(), $dimension->getId())));
+		} else {
+			$a = DimensionMemberAssociations::instance()->findOne(array('conditions' => array('dimension_id=? AND object_type_id=? AND associated_dimension_id=?'.
+				($ot instanceof ObjectType ? ' AND associated_object_type_id='.$ot->getId() : '') . $assoc_code_cond,
+				$member_dimension->getId(), $member->getObjectTypeId(), $dimension->getId())));
+		}
+		
 		if ($a instanceof DimensionMemberAssociation) {
-			$mpm = MemberPropertyMembers::findOne(array('conditions' => array('association_id = ? AND member_id = ?', $a->getId(), $member->getId())));
+			$field_sql = $reverse ? 'AND property_member_id' : 'AND member_id';
+			
+			$mpms = MemberPropertyMembers::instance()->findAll(array('conditions' => array('association_id = ? '.$field_sql.' = ?', $a->getId(), $member->getId())));
+			foreach ($mpms as $mpm) {
+				if ($reverse) $ids[] = intval($mpm->getMemberId());
+				else $ids[] = intval($mpm->getPropertyMemberId());
+			}
+		}
+	}
+	return $ids;
+}
+
+
+function get_associated_status_member_id($member, $dimension, $ot=null, $reverse=false, $assoc_code=null) {
+	if ($member instanceof Member && $dimension instanceof Dimension) {
+		$member_dimension = $member->getDimension();
+		if (!$member_dimension instanceof Dimension) return 0;
+		
+		$assoc_code_cond = $assoc_code ? " AND code='$assoc_code'" : '';
+
+		if (!$reverse) {
+			$a = DimensionMemberAssociations::instance()->findOne(array('conditions' => array('dimension_id=? AND object_type_id=? AND associated_dimension_id=?'.
+				($ot instanceof ObjectType ? ' AND associated_object_type_id='.$ot->getId() : '') . $assoc_code_cond,
+				$member_dimension->getId(), $member->getObjectTypeId(), $dimension->getId())));
+		} else {
+			$a = DimensionMemberAssociations::instance()->findOne(array('conditions' => array('associated_dimension_id=? AND associated_object_type_id=? AND dimension_id=?'.
+				($ot instanceof ObjectType ? ' AND object_type_id='.$ot->getId() : '') . $assoc_code_cond,
+				$member_dimension->getId(), $member->getObjectTypeId(), $dimension->getId())));
+		}
+		
+		if ($a instanceof DimensionMemberAssociation) {
+			$memcol = $reverse ? "property_member_id" : "member_id";
+			$mpm = MemberPropertyMembers::instance()->findOne(array('conditions' => array('association_id = ? AND '.$memcol.' = ?', $a->getId(), $member->getId())));
 			if ($mpm instanceof MemberPropertyMember) {
-				return $mpm->getPropertyMemberId();
+				return $reverse ? $mpm->getMemberId() : $mpm->getPropertyMemberId();
 			}
 		}
 	}
@@ -2079,101 +2350,412 @@ function get_associated_status_member_id($member, $dimension, $ot=null) {
 }
 
 
-function instantiate_template_task_parameters(TemplateTask $object, ProjectTask $copy, $parameterValues = array()) {
+function save_default_associated_member_selections($association_id, $member_id, $selections) {
+	
+	if (!is_numeric($association_id) || !is_numeric($member_id) || !is_array($selections)) return;
+	
+	DB::execute("DELETE FROM ".TABLE_PREFIX."dimension_member_association_default_selections WHERE association_id='$association_id' AND member_id='$member_id';");
+	
+	foreach ($selections as $sel_mem_id => $checked) {
+		$sql = "INSERT INTO ".TABLE_PREFIX."dimension_member_association_default_selections (association_id, member_id, selected_member_id) 
+			VALUES ('$association_id', '$member_id', ".DB::escape($sel_mem_id).")
+			ON DUPLICATE KEY UPDATE selected_member_id=selected_member_id";
+		DB::execute($sql);
+	}
+}
+
+/**
+ * When generating repetitive task instances, we need to know the original start and due date.
+ * If the repetitive task has been instantiated using a template we need to check if due or start date depends on any parameter.
+ * If so then return the paramter value at the moment of the instantiation as the original date
+ * @param ProjectTask $task
+ * @return array
+ */
+function find_original_dates_for_template_repetitive_task(ProjectTask $task) {
+	
+	$result = array();
+	
+	$template_id = $task->getColumnValue('from_template_id');
+	if ($task->getOriginalTaskId() > 0) {
+		$first_task = ProjectTasks::instance()->findById($task->getOriginalTaskId());
+	} else {
+		$first_task = $task;
+	}
+	
+	$due_date_property = null;
+	$st_date_property = null;
+	
+	$template_props = TemplateObjectProperties::getPropertiesByTemplateObject($first_task->getFromTemplateId(), $first_task->getFromTemplateObjectId());
+	foreach ($template_props as $t_prop) {
+		/* @var $t_prop TemplateObjectProperty */
+		if ($t_prop->getProperty() == 'due_date') {
+			$due_date_property = $t_prop;
+		}
+		if ($t_prop->getProperty() == 'start_date') {
+			$st_date_property = $t_prop;
+		}
+	}
+	
+	if ($due_date_property instanceof TemplateObjectProperty) {
+		$parameter_value = $due_date_property->getValue();
+		$result['original_due_date'] = get_instantiated_date_template_parameter($first_task, $parameter_value);
+	}
+	
+	if ($st_date_property instanceof TemplateObjectProperty) {
+		$parameter_value = $st_date_property->getValue();
+		$result['original_st_date'] = get_instantiated_date_template_parameter($first_task, $parameter_value);
+	}
+	
+	return $result;
+}
+
+/**
+ * Returns the original date parameter entered by the user when instantiating the template.
+ * It also adds to the resultant date the amount of time specified in the template variable
+ * @param ProjectTask $first_task
+ * @param string $parameter_value
+ * @return DateTimeValue|NULL
+ */
+function get_instantiated_date_template_parameter($first_task, $parameter_value) {
+	$original_date = null;
+	
+	$param = substr($parameter_value, 1, strpos($parameter_value, '}') - 1);
+	
+	$instantiated_param_row = DB::executeOne("
+		SELECT `value` FROM ".TABLE_PREFIX."template_instantiated_parameters
+		WHERE template_id=".$first_task->getFromTemplateId()."
+			AND instantiation_id=".$first_task->getInstantiationId()."
+			AND parameter_name='$param';
+	");
+	$instantiated_param_value = trim($instantiated_param_row['value']);
+	
+	if ($instantiated_param_value != '') {
+		try {
+			$original_date = DateTimeValueLib::dateFromFormatAndString(user_config_option('date_format'), $instantiated_param_value);
+		} catch (Exception $e) {
+			// ignore error and continue
+		}
+	}
+	
+	if ($original_date instanceof DateTimeValue) {
+		$dateUnit = substr($parameter_value, strlen($parameter_value) - 1); // i, d, w or m (for days, weeks or months, i for minutes)
+		if($dateUnit == 'm') $dateUnit = 'M';
+		if($dateUnit == 'i') $dateUnit = 'm';
+		$operator = '+';
+		if (strpos($parameter_value, '+') === false) {
+			$operator = '-';
+		}
+		
+		$dateNum = (int) substr($parameter_value, strpos($parameter_value,$operator), strlen($parameter_value) - 2);
+		$original_date->add($dateUnit, $dateNum);
+	}
+	
+	return $original_date;
+}
+
+
+function calculate_template_task_parameter_string($parameterValues, $value) {
+
+	if (is_array($parameterValues)){
+		$is_present = false;
+		foreach($parameterValues as $param => $val){
+			if (stripos($value, '{'.$param.'}') !== FALSE) {
+				$value = str_replace('{'.$param.'}', $val, $value);
+				$is_present = true;
+			}
+		}
+		// if parameter not present replace the parameter code with empty string
+		if (!$is_present) {
+			$value = preg_replace('/[{].*[}]/U', '', $value);
+		}
+	}
+	
+	return $value;
+}
+
+function calculate_template_task_parameter_date($parameterValues, $value, $propName, $object, $copy) {
+
+	$exp_value = explode("|", $value);
+	$value = $exp_value[0];
+	$time_value = null;
+	if (isset($exp_value[1])) $time_value = $exp_value[1];
+	
+	$opPos = strpos($value, '}') + 1;// the operator is placed after variable name
+
+	if ($opPos !== false) {
+		
+		$operator = substr($value, $opPos, 1);
+
+		// Is parametric
+		$dateParam = substr($value, 1, strpos($value, '}') - 1);
+		$dateParam = str_replace("'", "", $dateParam);
+		$hour_min = null;
+
+		$tz_offset = Timezones::getTimezoneOffsetToApply($copy);
+		
+		// get date from parameter, if parameter is defined by user => use that value, if it is the date of task creation => use DateTimeValueLib::now();
+		if ($dateParam == 'task_creation') {
+			$date = DateTimeValueLib::now();
+			$date->advance($tz_offset);
+
+			if ($time_value) {
+				$time_value_exp = explode(':', $time_value);
+				$hour_min['hours'] = $time_value_exp[0];
+				$hour_min['mins'] = $time_value_exp[1];
+
+			}else{
+				$hour_min['hours'] = $date->getHour();
+				$hour_min['mins'] = $date->getMinute();
+			}
+		} else {
+			$date_str = $parameterValues[$dateParam];
+			$result = null;
+			Hook::fire('before_instantiate_template_date_param', array('object' => $object, 'copy' => $copy, 'date_str' => $date_str), $result);
+			if (is_array($result)) {
+				if (isset($result['date'])) $date_str = $result['date'];
+				if (isset($result['time'])) $hour_min = $result['time'];
+			}
+			
+			$date = getDateValue($date_str);
+			if (!$date instanceof DateTimeValue) {
+				// dont set any date if user didn't specify one in the parameters
+				return;
+			}
+		}
+		
+		// set due time of resulting date as end of the day
+		if ($copy instanceof ProjectTask && config_option('use_time_in_task_dates') && $propName == "due_date"){
+			$copy->setUseDueTime(1);
+			
+			if ($hour_min == null) {
+				$hour_min = getTimeValue(user_config_option('work_day_end_time'));
+			}
+
+			$date->setHour($hour_min['hours']);
+			$date->setMinute($hour_min['mins']);
+			
+			$date = $date->add('s', -1*$tz_offset);
+		}
+		
+		// set start time of resulting date as beggining of the day
+		if ($copy instanceof ProjectTask && config_option('use_time_in_task_dates') && $propName == "start_date"){
+			$copy->setUseStartTime(1);
+			
+			if ($hour_min == null) {
+				$hour_min = getTimeValue(user_config_option('work_day_start_time'));
+			}
+
+			$date->setHour($hour_min['hours']);
+			$date->setMinute($hour_min['mins']);
+			
+			$date = $date->add('s', -1*$tz_offset);						
+		}
+		
+		
+		$dateUnit = substr($value, strlen($value) - 1); // i, d, w or m (for days, weeks or months, i for minutes)
+		if($dateUnit == 'm') {
+			$dateUnit = 'M'; // make month unit uppercase to call DateTimeValue::add with correct parameter
+		}
+		if($dateUnit == 'i') {
+			$dateUnit = 'm'; // DateTimeValue::add function needs minute option as 'm'
+		}
+		$dateNum = substr($value, $opPos+1, strlen($value) - $opPos - 2);
+
+		Hook::fire('template_param_date_calculation', array('parameterValues' => $parameterValues, 'op' => $operator, 'date' => $date, 'unit' => $dateUnit, 'template_id' => $object->getTemplateId(), 'original' => $object, 'copy' => $copy), $dateNum);
+		
+		$dateNum = (int)$dateNum;
+		$value = $date->add($dateUnit, $dateNum);
+		
+	}else{
+		$value = DateTimeValueLib::dateFromFormatAndString(user_config_option('date_format'), $value);
+	}
+
+	return array('value' => $value, 'dateUnit' => $dateUnit);
+}
+
+function calculate_template_task_parameter_numeric($parameterValues, $value, $propName) {
+
+	$hook_return_value = null;
+	Hook::fire('override_template_task_numeric_param_calculation', array('parameterValues' => $parameterValues, 'value' => $value, 'propName' => $propName), $hook_return_value);
+	if (is_array($hook_return_value) && $hook_return_value['value_generated']) {
+		return $hook_return_value['value'];
+	}
+	
+	if (is_array($parameterValues)) {
+				
+		$operator = '+';
+		if (strpos($value, '+') === false) {
+			$operator = '-';
+		}
+
+		$opPos = strpos($value, $operator);
+
+		if ($opPos !== false) {
+
+			// get the variable key
+			$numParam = substr($value, 1, strpos($value, '}') - 1);
+			$numParam = str_replace("'", "", $numParam);
+
+			// calculate the amount to add using the formula defined in the template
+			$amount_to_add = substr($value, $opPos + 1);
+			if (!is_numeric($amount_to_add)) $amount_to_add = 0;
+			if ($operator == '-') {
+				$amount_to_add = -1 * $amount_to_add;
+			}
+
+			// get the number entered by the user
+			$number = (int) $parameterValues[$numParam];
+			if (is_numeric($number) && is_numeric($amount_to_add)) {
+				// add the calculated amount
+				$value = $number + $amount_to_add;
+			} else {
+				$value = '';
+			}
+			
+		} else {
+			$value = '';
+		}
+	}
+
+	return $value;
+}
+
+function calculate_template_task_parameter_time($parameterValues, $value) {
+	
+	if (is_array($parameterValues)) {
+				
+		$operator = '+';
+		if (strpos($value, '+') === false) {
+			$operator = '-';
+		}
+
+		$opPos = strpos($value, $operator);
+
+		if ($opPos !== false) {
+
+			// get the variable key
+			$numParam = substr($value, 1, strpos($value, '}') - 1);
+			$numUnit = substr($value, strpos($value, '}')+1, 1);
+			$numParam = str_replace("'", "", $numParam);
+
+			// calculate the amount to add using the formula defined in the template
+			$amount_and_unit_to_add = substr($value, $opPos + 1);
+			$amount_to_add = substr($amount_and_unit_to_add, 0, strlen($amount_and_unit_to_add) - 1);
+			$amount_unit = substr($amount_and_unit_to_add, strlen($amount_and_unit_to_add) - 1);
+
+			if (!is_numeric($amount_to_add)) $amount_to_add = 0;
+			if ($operator == '-') {
+				$amount_to_add = -1 * $amount_to_add;
+			}
+
+			// get the number entered by the user
+			$number = (int) $parameterValues[$numParam];
+
+			// calculate the value
+			if (is_numeric($number) && is_numeric($amount_to_add)) {
+
+				$number_minutes = convert_time_amount_to_minutes($numUnit, $number);
+				$amount_to_add_minutes = convert_time_amount_to_minutes($amount_unit, $amount_to_add);
+				
+				$value = $number_minutes + $amount_to_add_minutes;
+
+			} else {
+				$value = '';
+			}
+			
+		} else {
+			$value = '';
+		}
+	}
+
+	return $value;
+}
+
+function convert_time_amount_to_minutes($unit, $number) {
+
+	if ($unit == 'i') {// minutes
+		$number_minutes = $number;
+	} else if ($unit == 'h') {// hours
+		$number_minutes = $number * 60;
+	} else if ($unit == 'd') {// days
+		$number_minutes = $number * 60 * 24;
+	} else if ($unit == 'w') {// weeks
+		$number_minutes = $number * 60 * 24 * 7;
+	}
+
+	return $number_minutes;
+}
+
+
+function instantiate_template_task_parameters(TemplateTask $object, ProjectTask $copy, $parameterValues = array()) {  
 	
 	$objProp = TemplateObjectProperties::getPropertiesByTemplateObject($object->getTemplateId(), $object->getId());
 	$manager = $copy->manager();
+
+	$template_object_properties = $manager->getTemplateObjectProperties();
+	$save_copy = false;
 	
 	foreach($objProp as $property) {
-	
 		$propName = $property->getProperty();
 		$value = $property->getValue();
-	
-		if ($manager->getColumnType($propName) == DATA_TYPE_STRING || $manager->getColumnType($propName) == DATA_TYPE_INTEGER) {
-			if (is_array($parameterValues)){
-				$is_present = false;
-				foreach($parameterValues as $param => $val){
-					if (strpos($value, '{'.$param.'}') !== FALSE) {
-						$value = str_replace('{'.$param.'}', $val, $value);
-						$is_present = true;
-					}
-				}
-				// if parameter not present replace the parameter code with empty string
-				if (!$is_present) {
-					$value = preg_replace('/[{].*[}]/U', '', $value);
-				}
-			}
-		} else if($manager->getColumnType($propName) == DATA_TYPE_DATE || $manager->getColumnType($propName) == DATA_TYPE_DATETIME) {
-			$operator = '+';
-			if (strpos($value, '+') === false) {
-				$operator = '-';
-			}
-			$opPos = strpos($value, $operator);
-			if ($opPos !== false) {
-				// Is parametric
-				$dateParam = substr($value, 1, strpos($value, '}') - 1);
-				if ($dateParam == 'task_creation') {
-					$date = DateTimeValueLib::now();					
-				} else {
-					$date = getDateValue($parameterValues[$dateParam]);
-					if (!$date instanceof DateTimeValue) {				
-						$date = DateTimeValueLib::now();						
-					}
-						
-					if (config_option('use_time_in_task_dates') && $propName == "due_date"){
-						$copy->setUseDueTime(1);
-						
-						$hour_min = getTimeValue(user_config_option('work_day_end_time'));
-						$hour_min['hours'];
-						$hour_min['mins'];
-						
-						$date->setHour($hour_min['hours']);
-						$date->setMinute($hour_min['mins']);
-						
-						$date = $date->add('s', -logged_user()->getTimezone()*3600);										
-					}
-					if (config_option('use_time_in_task_dates') && $propName == "start_date"){
-						$copy->setUseStartTime(1);
-						
-						$hour_min = getTimeValue(user_config_option('work_day_start_time'));
-						$hour_min['hours'];
-						$hour_min['mins'];
-						
-						$date->setHour($hour_min['hours']);
-						$date->setMinute($hour_min['mins']);
-						
-						$date = $date->add('s', -logged_user()->getTimezone()*3600);						
-					}
-					
-				}
-	
-				$dateUnit = substr($value, strlen($value) - 1); // d, w or m (for days, weeks or months)
-				if($dateUnit == 'm') {
-					$dateUnit = 'M'; // make month unit uppercase to call DateTimeValue::add with correct parameter
-				}
-				$dateNum = (int) substr($value, strpos($value,$operator), strlen($value) - 2);
-				
-				//Hook::fire('template_param_date_calculation', array('op' => $operator, 'date' => $date, 'template_id' => $object->getTemplateId(), 'original' => $object, 'copy' => $copy), $dateNum);
-				
-				$value = $date->add($dateUnit, $dateNum);
-			}else{
-				$value = DateTimeValueLib::dateFromFormatAndString(user_config_option('date_format'), $value);
+
+		$is_user_id = false;
+		foreach ($template_object_properties as $top) {
+			if ($top['id'] == $propName) {
+				$is_user_id = $top['type'] == 'USER';
+				$is_time_prop = $top['type'] == DATA_TYPE_TIME;
 			}
 		}
-		if($value != '') {
+	
+		if ($manager->getColumnType($propName) == DATA_TYPE_STRING || ($manager->getColumnType($propName) == DATA_TYPE_INTEGER && $is_user_id) ) {
+			// is a string column or an user id column
+			$value = calculate_template_task_parameter_string($parameterValues, $value);
+		} else if ($manager->getColumnType($propName) == DATA_TYPE_INTEGER || $manager->getColumnType($propName) == DATA_TYPE_FLOAT) {
+			// is a numeric column
+			if ($is_time_prop) {
+				// this numeric property represents a time amount in minutes
+				$value = calculate_template_task_parameter_time($parameterValues, $value);
+			} else {
+				// it is a normal numeric property
+				$value = calculate_template_task_parameter_numeric($parameterValues, $value, $propName);
+			}
+		} else if($manager->getColumnType($propName) == DATA_TYPE_DATE || $manager->getColumnType($propName) == DATA_TYPE_DATETIME) {
+			// is a date column
+			$result = calculate_template_task_parameter_date($parameterValues, $value, $propName, $object, $copy);
+			$value = array_var($result, 'value');
+			$dateUnit = array_var($result, 'dateUnit');
+		}
+		
+		// Use the paramater value and set it in the copy
+		$column_exist = $manager->columnExists($propName) || $propName == 'name';
+		if($value != '' && $column_exist) {
 			if (!$copy->setColumnValue($propName, $value)){
 				$copy->object->setColumnValue($propName, $value);
+			}
+			if ($propName == 'start_date' && $dateUnit == 'm') {
+				$copy->setUseStartTime(true);
+			}
+			if ($propName == 'due_date' && $dateUnit == 'm') {
+				$copy->setUseDueTime(true);
 			}
 			if ($propName == 'text' && $copy->getTypeContent() == 'text') {
 				$copy->setText(html_to_text($copy->getText()));
 			}
-			$copy->save();
-		}
-		
+
+			Hook::fire('after_task_template_param_assigned', array('template_task'=>$object, 'property'=>$propName, 'value'=>$value), $copy);  
+			
+			$save_copy = true;
+		}	
+	}
+
+	Hook::fire('after_setting_all_task_template_params', array(), $copy);
+
+	if ($save_copy) {
+		$copy->save();
 	}
 	
 	// Ensure that assigned user is subscribed
-	if ($copy->getAssignedTo() instanceof Contact) {
+	if ($copy instanceof ProjectTask && $copy->getAssignedTo() instanceof Contact) {
 		$copy->subscribeUser($copy->getAssignedTo());
 	}
 	
@@ -2185,9 +2767,9 @@ function instantiate_template_task_parameters(TemplateTask $object, ProjectTask 
 
 /**
  * Copies related data from an object to another (members, linked_objects, custom_properties, subscribers, reminders and comments)
- * @param $object: Original object to copy data
+ * @param $object: ContentDataObject Original object to copy data
  * @param $copy: Object to be modified with the data of the $orignal object
- * @param $options: set which type of data will not be copied
+ * @param $options: array set which type of data will not be copied
  */
 function copy_additional_object_data($object, &$copy, $options=array()) {
 	if (!$object instanceof ContentDataObject || !$copy instanceof ContentDataObject) {
@@ -2206,8 +2788,11 @@ function copy_additional_object_data($object, &$copy, $options=array()) {
 
 	// copy members
 	if ($copy_members) {
-		$object_members = $object->getMemberIds();
-		$controller->add_to_members($copy, $object_members);
+		$object_members = $object->getMembers();
+		$copy->addToMembers($object_members);
+		Hook::fire ('after_add_to_members', $copy, $object_members);
+		$copy->addToSharingTable();
+		//add_object_to_sharing_table($copy, logged_user());
 	}
 
 	// copy linked objects
@@ -2246,7 +2831,7 @@ function copy_additional_object_data($object, &$copy, $options=array()) {
 		foreach ($object->getSubscriberIds() as $user_id) {
 			$subscribers_array["user_" . $user_id] = "1";
 		}
-		$controller->add_subscribers($copy, $subscribers_array);
+		$controller->add_subscribers($copy, $subscribers_array, true, false);
 	}
 
 	// copy reminders
@@ -2287,4 +2872,155 @@ function copy_additional_object_data($object, &$copy, $options=array()) {
 		}
 	}
 
+}
+
+
+
+function get_time_info($timestamp) {
+	$sign = $timestamp >= 0 ? 1 : -1;
+	
+	$timestamp = abs($timestamp);
+	$days = floor($timestamp / (60*60*24));
+	
+	$ts_hours = $timestamp % (60*60*24);
+	$hours = floor($ts_hours / (60*60));
+	
+	//$ts_mins = $ts_hours - ($hours*60*60);
+	$ts_mins = $ts_hours % (60*60);
+	$mins = floor($ts_mins / (60));
+	
+	return array('days' => $days, 'hours' => $hours, 'mins' => $mins, 'sign' => $sign);
+}
+
+//escapes a character from a string, escapes ' by default, or all characters according to $all
+function escape_character($string, $char="'", $all = false) {
+	if ($all){
+	    return mysqli_real_escape_string(DB::connection()->getLink(), $string);
+	}else{
+		return str_replace($char, "\\".$char, $string);
+	}
+}
+
+function escape_parameters_array($parameters_to_escape) {
+	$escaped = array();
+	
+	if (is_array($parameters_to_escape)) {
+		foreach ($parameters_to_escape as $k => $v) {
+			if (is_array($v)) {
+				$escaped[$k] = escape_parameters_array($v);
+			} else {
+			    $escaped[$k] = mysqli_real_escape_string(DB::connection()->getLink(), $v);
+			}
+		}
+	}
+	
+	return $escaped;
+}
+
+
+
+
+/**
+ * @abstract Collects all the subsets of $set of size $subsets_size.
+ * @param array $set Original set to calcualte the subsets.
+ * @param int $pos current position, only for recursion purposes.
+ * @param int $subsets_size Size of the resulting subsets of $set.
+ * @param int $start_pos starting position, only for recursion purposes.
+ * @param array $all_subsets variable in which the subsets will be returned.
+ * @example get_all_subsets($set, 0, 4, 0, $all_subsets); collects all subsets of $set of size 4 and put them in $all_subsets array
+ */
+function get_all_subsets($set, $pos, $subsets_size, $start_pos, &$all_subsets) {
+	if ($pos == $subsets_size) {
+		$result = array();
+		for ($i = 0; $i < $subsets_size; $i++) {
+			$result[] = $set[$i];
+		}
+		$all_subsets[] = $result;
+		return;
+	}
+
+	for ($i = $start_pos; $i < count($set); $i++) {
+		// optimization - not enough elements left
+		if ($subsets_size - $pos + $i > count($set)) {
+			return;
+		}
+
+		// swap pos and i
+		$temp = $set[$pos];
+		$set[$pos] = $set[$i];
+		$set[$i] = $temp;
+
+		get_all_subsets($set, $pos+1, $subsets_size, $i+1, $all_subsets);
+
+		// swap pos and i back - otherwise things just gets messed up
+		$temp = $set[$pos];
+		$set[$pos] = $set[$i];
+		$set[$i] = $temp;
+	}
+}
+
+
+function check_member_custom_prop_exists($table_prefix, $cp_code, $ot_name) {
+	$exists_cp = false;
+
+	$ot_subquery = "SELECT id FROM ".$table_prefix."object_types WHERE name='$ot_name'";
+	$sql = "SELECT count(id) as total FROM ".$table_prefix."member_custom_properties WHERE code='$cp_code' AND object_type_id = ($ot_subquery)";
+	$mysql_res = mysqli_query(DB::connection()->getLink(), $sql);
+	if ($mysql_res) {
+		$rows = mysqli_fetch_assoc($mysql_res);
+		if (is_array($rows) && count($rows) > 0) {
+			$exists_cp = $rows['total'] > 0;
+		}
+	}
+	return $exists_cp;
+}
+
+function check_custom_prop_exists($table_prefix, $cp_code, $ot_name) {
+	$exists_cp = false;
+
+	$ot_subquery = "SELECT id FROM ".$table_prefix."object_types WHERE name='$ot_name'";
+	$sql = "SELECT count(id) as total FROM ".$table_prefix."custom_properties WHERE code='$cp_code' AND object_type_id = ($ot_subquery)";
+	$mysql_res = mysqli_query(DB::connection()->getLink(), $sql);
+	if ($mysql_res) {
+		$rows = mysqli_fetch_assoc($mysql_res);
+		if (is_array($rows) && count($rows) > 0) {
+			$exists_cp = $rows['total'] > 0;
+		}
+	}
+	return $exists_cp;
+}
+
+
+function build_api_members_data(ContentDataObject $object) {
+	$members = $object->getMembers();
+	$members_data = array();
+	foreach ($members as $m) {
+		/* @var $m Member */
+		$m_data = array(
+				'id' => $m->getId(),
+				'name' => $m->getName(),
+				'dimension_id' => $m->getDimensionId()
+		);
+		$m_ot = ObjectTypes::instance()->findById($m->getObjectTypeId());
+		if ($m_ot instanceof ObjectType) {
+			$m_data['object_type_name'] = $m_ot->getName();
+		}
+		$members_data[] = $m_data;
+	}
+	
+	return $members_data;
+}
+
+
+/**
+ * Function to check if $string starts with $startString
+ * 
+ * @param string $string is the complete string
+ * @param string $startString is the string that may be the first part of $string 
+ * @return boolean 
+ */
+function startsWith($string, $startString)
+{
+    $len = strlen($startString);
+    return (substr($string, 0, $len) == $startString);
 }

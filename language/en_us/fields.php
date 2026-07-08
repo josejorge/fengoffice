@@ -229,6 +229,7 @@ return array(
     'field ProjectTasks object_subtype' => 'Object subtype',
 	'field ProjectTasks percent_completed' => 'Percent completed',
 	'field ProjectTasks original_task_id' => 'Original task id',
+	'field ProjectTasks parent_id' => 'Parent task',
 
 	// User fields
     'field Users username' => 'Username', 
@@ -248,6 +249,7 @@ return array(
     'field Users auto_assign' => 'Auto assign', 
     'field Users can_manage_contacts' => 'Can manage all people',
     'field Users can_manage_templates' => 'Can manage templates',
+	'field Users can_manage_mail_templates'=>'Can manage mail templates',
 	'field Users can_manage_reports'=> 'Can manage reports',
 	'field Users can_manage_time'=> 'Can manage time',
 	'field Users can_add_mail_accounts'=> 'Can add email accounts',
@@ -284,8 +286,21 @@ return array(
 	'is_user' => 'Is user',
 	'field Objects is_user' => 'Is user',
 	'field Contacts is_user' => 'Is user',
+	
+	'field Objects text' => 'Description',
+    'field Objects mark_as_started' => 'Marked as started',
+    
+    'field ProjectTasks total_worked_time' => 'Worked time',
+	'field ProjectTasks overall_worked_time_plus_subtasks' => 'Total worked time',  
+	'field ProjectTasks total_time_estimate' => 'Total estimated time',  
+    'field ProjectTasks status' => 'Status',
 
-	'home_phone' => 'Home phone',
+    // Time fields 
+    'field Objects total_worked_time' => 'Worked time', 
+    'field Objects status' => 'Status',
+    
+    
+    'home_phone' => 'Home phone',
 	'work_phone' => 'Work phone',
 	'mobile_phone' => 'Mobile phone',
 	'im_values' => 'Instant messaging',
@@ -295,6 +310,8 @@ return array(
 	'home_address' => 'Home address',
 	'work_address' => 'Work address',
 	'other_address' => 'Other address',
+	'postal_address' => 'Postal address',
+	'postal' => 'Postal',
 
 	'field Contacts home_phone' => 'Home phone',
 	'field Contacts work_phone' => 'Work phone',
@@ -306,5 +323,11 @@ return array(
 	'field Contacts home_address' => 'Home address',
 	'field Contacts work_address' => 'Work address',
 	'field Contacts other_address' => 'Other address',
+	'field Contacts postal_address' => 'Postal address',
+		
+	'field Timeslots rel_object_id' => 'Task',
+
+    'field Objects prefix' => 'Prefix',
+
 );
 

@@ -6,8 +6,20 @@ class Hook {
 		self::$hooks[] = $hook;
 	}
 	
+
+	/**
+	 * Function fire - Calls ("fires") a hook
+	 * 
+	 * @todo Documentation for this function needs to be reviewed. It may not be accurate. 
+	 * 
+	 * @param $function It's the name of the function.
+	 * @param $argument It's the argument (Or set of arguments?) to be.
+	 * @param $ret mixed holds the result of the function call.
+	 * 
+	 */
 	static function fire($function, $argument, &$ret) {
 		foreach (self::$hooks as $hook) {
+			$retOld = $ret;
 			$callback = $hook."_".$function;
 			if (function_exists($callback)) {
 				$callback($argument, $ret);

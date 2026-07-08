@@ -35,20 +35,25 @@
   	
   	
   	static function getTypeId($type){
-  		$address_type = AddressTypes::findOne(array('conditions' => array("`name` = ?",$type)));
+  		$address_type = AddressTypes::instance()->findOne(array('conditions' => array("`name` = ?",$type)));
   		if (!is_null($address_type)) return $address_type->getId();
   		else return null;
     }
     
-    static function getAllAddressTypesInfo() {
-    	$types = AddressTypes::findAll();
+    static function getAllAddressTypesInfo($use_id_as_key = false) {
+    	$types = AddressTypes::instance()->findAll();
     	$result = array();
     	foreach ($types as $type) {
-    		$result[] = array('id' => $type->getId(), 'code' => $type->getName(), 'name' => lang($type->getName()));
+            if($use_id_as_key){
+                $result[$type->getId()] = array('id' => $type->getId(), 'code' => $type->getName(), 'name' => lang($type->getName()));
+            }else{
+    		    $result[] = array('id' => $type->getId(), 'code' => $type->getName(), 'name' => lang($type->getName()));
+            }
     	}
     	 
     	return $result;
     }
+
     
   } // AddressTypes 
 

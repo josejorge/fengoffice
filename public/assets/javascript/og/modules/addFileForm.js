@@ -146,7 +146,7 @@ og.checkFileName = function(genid) {
 			caller: this,
 			callback: function(success, data) {
 				og.checkFileNameCallback(success, data, genid);
-				og.resize_modal_form();
+				//og.resize_modal_form();
 			}
 		});
 	}, 100);
@@ -161,27 +161,42 @@ og.checkFileNameCallback = function(success, data, genid){
   		og.fileValidateAttempt = false;
 		if (data.files && isNew){
 			og.checkFileNameResult = 1;
-			og.showFileExists(genid, data);
 		} else {
 			og.checkFileNameResult = 2;
 		}
+		og.showFileExists(genid, data);
   	} else {
   		og.fileValidateAttempt = false;
   		og.checkFileNameResult = 1;
   	}
 }
   
-og.showFileExists = function(genid, fileInfo){
- 	Ext.get(genid + "addFileFilenameExists").setDisplayed(true);
- 	var table = document.getElementById(genid + 'upload-table');
- 	while(table.rows.length>0) 
-    	table.deleteRow(table.rows.length-1);
- 	
- 	for (var i = 0; i < fileInfo.files.length; i++)
- 		og.addFileOption(table, fileInfo.files[i], genid);
+og.showFileExists = function(genid, fileInfo) {
+	var table = document.getElementById(genid + 'upload-table');
+	// delete the radio buttons of previous call
+	if (table) {
+		while (table.rows.length > 0) {
+			table.deleteRow(table.rows.length-1);
+		}
+	}
+	
+	var file_exists_container = Ext.get(genid + "addFileFilenameExists");
+	if (fileInfo && fileInfo.files && fileInfo.files.length > 0) {
+		// show duplicate filename selector
+		file_exists_container.setDisplayed(true);
+		// add the radio buttons for the files that have same name
+		checked = true;
+		for (var i = 0; i < fileInfo.files.length; i++) {
+			og.addFileOption(table, fileInfo.files[i], genid, checked);
+			checked = false;
+		}
+	} else {
+		// hide duplicate filename selector
+		file_exists_container.setDisplayed(false);
+	}
 }
 
-og.addFileOption = function(table, file, genid){
+og.addFileOption = function(table, file, genid, checked){
 	var row = table.insertRow(table.rows.length);
 	var cell = row.insertCell(0);
 	cell.style.paddingRight='4px';
@@ -197,6 +212,7 @@ og.addFileOption = function(table, file, genid){
 		}
 		el.id = file.id + "chk" + genid;
 		el.className = "checkbox";
+		if (checked) el.checked = 'checked';
 		el.value = file.id;
 		el.enabled = file.can_edit && (!file.is_checked_out || (file.is_checked_out && file.can_check_in));
 		cell.appendChild(el);
@@ -229,7 +245,7 @@ og.addFileOption = function(table, file, genid){
 	var workspaces = '';
 	
 	
-	div.innerHTML = addMessage + fileLink + workspaces;
+	div.innerHTML = '<label for="'+file.id + "chk" + genid+'">' + addMessage + fileLink + workspaces + '</label>';
 	cell.appendChild(div);
 	
 	var cell = row.insertCell(2);
@@ -241,9 +257,9 @@ og.addFileOption = function(table, file, genid){
 	if (newDate.getFullYear() != currDate.getFullYear()) {
 		dateToShow = newDate.format("j M Y");
 	} else {
-		dateToShow = newDate.format("j M");
+		dateToShow = newDate.format("j M g:i A");
 	}
-	cell.innerHTML = lang("created by on", file.created_by_name, dateToShow);
+	cell.innerHTML = '<span style="font-size:90%;">'+lang("created by on", file.created_by_name, dateToShow)+'</span>';
 	
 	var cell = row.insertCell(3);
 	cell.style.paddingLeft = '10px';

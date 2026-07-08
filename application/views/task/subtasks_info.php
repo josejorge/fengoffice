@@ -1,3 +1,13 @@
+<style>
+.taskCheckbox a.internalLink img {
+	margin: 2px 4px;
+}
+.taskText a.coViewAction,
+.objectTimeslots a.coViewAction {
+	background-size: 12px !important;
+	background-position: center;
+}
+</style>
 <?php
 $task_list = $object;
 
@@ -15,7 +25,7 @@ if($showOpenSubtasksDiv) { ?>
       <tr>
 <!-- Checkbox -->
 <?php if($task->canChangeStatus(logged_user()) && !$task_list->isTrashed()) { ?>
-    <td class="taskCheckbox"><?php echo checkbox_link($task->getCompleteUrl(rawurlencode(get_url('task', 'view', array('id' => $task_list->getId())))), false, lang('mark task as completed')) ?></td>
+    <td class="taskCheckbox"><?php echo checkbox_link($task->getCompleteUrl(rawurlencode(get_url('task', 'view', array('id' => $task_list->getId()))), 'task view - complete subtask'), false, lang('mark task as completed')) ?></td>
 <?php } else { ?>
         <td class="taskCheckbox"><img src="<?php echo icon_url('not-checked.jpg') ?>" alt="<?php echo lang('open task') ?>" /></td>
 <?php } // if?>
@@ -26,13 +36,14 @@ if($showOpenSubtasksDiv) { ?>
           <span class="assignedTo"><?php echo clean($task->getAssignedTo()->getObjectName()) ?>:</span> 
 <?php } // if{ ?>
           <a class="internalLink" href="<?php echo $task->getObjectUrl() ?>"><?php echo ($task->getObjectName() && $task->getObjectName()!='' )?clean($task->getObjectName()):clean($task->getText()) ?></a> 
-          <?php if($task->canEdit(logged_user()) && !$task->isTrashed()) { ?>
-          	<a class="internalLink blank" href="<?php echo $task->getEditListUrl() ?>" title="<?php echo lang('edit task') ?>">
-          	<img src="<?php echo icon_url('edit.gif') ?>" alt="" /></a>
+          &nbsp;
+		  <?php if($task->canEdit(logged_user()) && !$task->isTrashed()) { ?>
+          	<a class="internalLink coViewAction ico-edit" href="javascript:og.render_modal_form('', {c:'task', a:'edit_task', params: {id:<?php echo $task->getId()?>,reload:1, req_channel:'task view - edit subtask'}});" title="<?php echo lang('edit task') ?>">
+          	</a>
           <?php } // if ?>
           <?php if($task->canDelete(logged_user()) && !$task->isTrashed()) { ?>
-          	<a class="internalLink blank" href="<?php echo $task->getDeleteUrl() ?>&taskview=true" onclick="return confirm('<?php echo escape_single_quotes(lang('confirm delete task')) ?>')" title="<?php echo lang('delete task') ?>">
-          	<img src="<?php echo icon_url('cancel_gray.gif') ?>" alt="" /></a>
+          	<a class="internalLink coViewAction ico-trash" href="<?php echo $task->getDeleteUrl('task view - delete subtask') ?>&taskview=true" onclick="return confirm('<?php echo escape_single_quotes(lang('confirm delete task')) ?>')" title="<?php echo lang('delete task') ?>">
+          	</a>
           <?php } // if ?>
         </td>
       </tr>
@@ -56,10 +67,10 @@ if($showOpenSubtasksDiv) { ?>
 			$counter++;
 			$options = array();
 			if (!$task->isTrashed() && $timeslot->canEdit(logged_user())) {
-				$options[] = '<a class="internalLink" href="' . $timeslot->getEditUrl() . '"><img src="'. icon_url('edit.gif') .'" alt="" /></a>';
+				$options[] = '<a class="internalLink coViewAction ico-edit" href="javascript:og.render_modal_form(\'\', {c:\'time\', a:\'edit_timeslot\', params: {id:'. $timeslot->getId().', req_channel:\'task view - edit subtask time\'}});"></a>';
 			}
 			if (!$task->isTrashed() && $timeslot->canDelete(logged_user())) 
-				$options[] = '<a class="internalLink" href="' . $timeslot->getDeleteUrl() . '" onclick="return confirm(\'' . escape_single_quotes(lang('confirm delete timeslot')) . '\')"><img src="'. icon_url('cancel_gray.gif') .'" alt="" /></a>';
+				$options[] = '<a class="internalLink coViewAction ico-trash" href="' . $timeslot->getDeleteUrl('task view - delete subtask time') . '" onclick="return confirm(\'' . escape_single_quotes(lang('confirm delete timeslot')) . '\')"></a>';
 				
 			if (!$task->isTrashed() && $timeslot->isOpen() && $timeslot->getContactId() == logged_user()->getId() && $timeslot->canEdit(logged_user())){
 				$open_timeslot = $timeslot;
@@ -109,49 +120,8 @@ if($showOpenSubtasksDiv) { ?>
   
   <div class="addTask">
 <?php if($task_list->canAddSubTask(logged_user()) && !$task_list->isTrashed()) { ?>
-    <div id="addTaskForm<?php echo $task_list->getId() ?>ShowLink"><a class="internalLink" href="<?php echo $task_list->getAddTaskUrl(false) ?>" onclick="App.modules.addTaskForm.showAddTaskForm(<?php echo $task_list->getId() ?>); return false"><?php echo lang('add sub task') ?></a></div>
+    <div id="addTaskForm<?php echo $task_list->getId() ?>ShowLink"><a class="internalLink" href="<?php echo $task_list->getAddTaskUrl(false) ?>" onclick="ogTasks.drawAddNewTaskForm (null,<?php echo $task_list->getId() ?>,null, null,1,'task view - add subtask'); return false"><?php echo lang('add sub task') ?></a></div>
   
-    <div id="addTaskForm<?php echo $task_list->getId() ?>" style="display:none">
-      <form class="internalForm" action="<?php echo $task_list->getAddTaskUrl(false) ?>" method="post">
-        <div class="taskListAddTaskFields">
-          <label for="addTaskTitle<?php echo $task_list->getId() ?>"><?php echo lang('name') ?>:</label>
-          <?php echo text_field("task[name]", null, array('class' => 'title', 'id' => 'addTaskTitle' . $task_list->getId())) ?>
-          <label for="addTaskText<?php echo $task_list->getId() ?>"><?php echo lang('description') ?>:</label>
-          <?php echo textarea_field("task[text]", null, array('class' => 'short', 'id' => 'addTaskText' . $task_list->getId())) ?>
-        </div>
-        <div style="padding-top:4px">   
-	      <?php /*echo label_tag(lang('dates'))*/ ?>
-	      <table><tbody><tr><td style="padding-right: 10px">
-	      <?php echo label_tag(lang('start date')) ?>            
-	      </td><td>
-	      	<div style="float:left;"><?php echo pick_date_widget2('task_start_date', array_var($task_data, 'start_date'),$genid, 60) ?></div>
-	      	<?php if (config_option('use_time_in_task_dates')) { ?>
-	      	<div style="float:left;margin-left:10px;"><?php echo pick_time_widget2('task_start_time', array_var($task_data, 'start_date'), $genid, 65); ?></div>
-	      	<?php } ?>
-	      </td></tr><tr><td style="padding-right: 10px">
-	      <?php echo label_tag(lang('due date')) ?>
-	      </td><td>
-	      	<div style="float:left;"><?php echo pick_date_widget2('task_due_date', array_var($task_data, 'due_date'),$genid, 70) ?></div>
-	      	<?php if (config_option('use_time_in_task_dates')) { ?>
-	      	<div style="float:left;margin-left:10px;"><?php echo pick_time_widget2('task_due_time', array_var($task_data, 'due_date'), $genid, 65); ?></div>
-	      	<?php } ?>
-	      </td></tr><tr><td style="padding-right: 10px">
-	      	<label><?php echo lang('assign to') ?>:</label>
-	      </td><td>
-	       	<div class="taskListAddTaskAssignedTo" style="margin-top:1px;">
-	      	<?php
-	      		echo assign_to_select_box('task[assigned_to_contact_id]', $task_list->getMembers(), $task_list->getAssignedToContactId());
-	      	?>
-	      	</div>
-	      </td></tr></tbody></table>
-		</div>
-		<input type="hidden" id="addTaskMilestoneId<?php echo $task_list->getId() ?>" name="task[milestone_id]" value="<?php echo $task_list->getMilestoneId() ?>"/>
-		<input type="hidden" id="addTaskPriority<?php echo $task_list->getId() ?>" name="task[priority]" value="<?php echo $task_list->getPriority() ?>"/>
-		<input type="hidden" id="addTaskInputType<?php echo $task_list->getId() ?>" name="task[inputtype]" value="taskview"/>
-		<input type="hidden" id="addTaskInputType<?php echo $task_list->getId() ?>" name="template_task" value= "<?php echo $template_task ?>"/>
-        <?php echo submit_button(lang('add sub task'), 's', array('id' => 'addTaskSubmit' . $task_list->getId(), 'fromTaskView' => 'true')) ?> <?php echo lang('or') ?> <a href="#" onclick="App.modules.addTaskForm.hideAddTaskForm(<?php echo $task_list->getId() ?>); return false;"><?php echo lang('cancel') ?></a>
-      </form>
-    </div>
 <?php } // if ?>
   </div>
   <?php if(is_array($task_list->getOpenSubTasks()) && count($task_list->getOpenSubTasks()) > 0) { ?>
@@ -172,19 +142,20 @@ if($showCompletedSubtasksDiv) { ?>
 <?php if($on_list_page || ($counter <= 5)) { ?>
       <tr>
 <?php if($task->canChangeStatus(logged_user()) && !$task->isTrashed()) { ?>
-    <td class="taskCheckbox"><?php echo checkbox_link($task->getOpenUrl(rawurlencode(get_url('task', 'view', array('id' => $task_list->getId())))), true, lang('mark task as open')) ?></td>
+    <td class="taskCheckbox"><?php echo checkbox_link($task->getOpenUrl(rawurlencode(get_url('task', 'view', array('id' => $task_list->getId()))), 'task view - reopen subtask'), true, lang('mark task as open')) ?></td>
 <?php } else { ?>
         <td class="taskCheckbox"><img src="<?php echo icon_url('checked.jpg') ?>" alt="<?php echo lang('completed task') ?>" /></td>
 <?php } // if ?>
         <td class="taskText">
         	<a class="internalLink" href="<?php echo $task->getObjectUrl() ?>"><?php echo clean($task->getObjectName()) ?></a> 
+			&nbsp;			
           <?php if($task->canEdit(logged_user()) && !$task->isTrashed()) { ?>
-          	<a class="internalLink" href="<?php echo $task->getEditListUrl() ?>" class="blank" title="<?php echo lang('edit task') ?>">
-          	<img src="<?php echo icon_url('edit.gif') ?>" alt="" /></a>
+          	<a class="internalLink coViewAction ico-edit" href="javascript:og.render_modal_form('', {c:'task', a:'edit_task', params: {id:<?php echo $task->getId()?>,reload:1, req_channel:'task view - edit subtask'}});" class="blank" title="<?php echo lang('edit task') ?>">
+          	</a>
           <?php } // if ?> 
           <?php if($task->canDelete(logged_user()) && !$task->isTrashed()) { ?>
-          	<a href="<?php echo $task->getDeleteUrl() ?>" class="blank internalLink" onclick="return confirm('<?php echo escape_single_quotes(lang('confirm delete task')) ?>')" title="<?php echo lang('delete task') ?>">
-          	<img src="<?php echo icon_url('cancel_gray.gif') ?>" alt="" /></a>
+          	<a href="<?php echo $task->getDeleteUrl('task view - delete subtask') ?>" class="coViewAction ico-trash internalLink" onclick="return confirm('<?php echo escape_single_quotes(lang('confirm delete task')) ?>')" title="<?php echo lang('delete task') ?>">
+          	</a>
           <?php } // if ?>
           <br />
           <?php if ($task->getCompletedBy() instanceof Contact) {?>

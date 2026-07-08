@@ -31,14 +31,18 @@
      'username' => DATA_TYPE_STRING,
      'contact_passwords_id' => DATA_TYPE_INTEGER,
      'picture_file' => DATA_TYPE_STRING,
+     'picture_file_small' => DATA_TYPE_STRING,
+     'picture_file_medium' => DATA_TYPE_STRING,
      'avatar_file' => DATA_TYPE_STRING,	 	
      'comments' => DATA_TYPE_STRING,
-	 'last_login' => DATA_TYPE_DATETIME,
-	 'last_activity' => DATA_TYPE_DATETIME,
-     'last_visit' => DATA_TYPE_DATETIME,
-	 'personal_member_id' => DATA_TYPE_INTEGER,
-     'disabled' => DATA_TYPE_BOOLEAN,
-     'default_billing_id' => DATA_TYPE_INTEGER
+      'last_login' => DATA_TYPE_DATETIME,
+      'last_activity' => DATA_TYPE_DATETIME,
+      'last_visit' => DATA_TYPE_DATETIME,
+      'personal_member_id' => DATA_TYPE_INTEGER,
+      'disabled' => DATA_TYPE_BOOLEAN,
+      'token_disabled' => DATA_TYPE_STRING,
+      'default_billing_id' => DATA_TYPE_INTEGER,
+      'user_timezone_id' => DATA_TYPE_INTEGER,
     );
   
     /**
@@ -110,10 +114,10 @@
     */
     function getSystemColumns() {
       return array_merge(parent::getSystemColumns(), array(
-      	'company_id', 'picture_file', 'timezone', 'user_id', 'avatar_file',
+      	'company_id', 'picture_file', 'picture_file_small', 'picture_file_medium', 'timezone', 'user_id', 'avatar_file',
       	'contact_passwords_id', 'permission_group_id', 
-      	'personal_member_id', 'salt', 'token', 'twister',
-      	'is_active_user', 'user_type', 'default_billing_id')
+      	'personal_member_id', 'salt', 'token', 'twister', 'token_disabled',
+      	'is_active_user', 'user_type', 'default_billing_id', 'user_timezone_id')
       );
     } // getSystemColumns
     
@@ -184,7 +188,7 @@
     *
     * @access public
     * @param array $arguments
-    * @return one or Contacts objects
+    * @return array or Contacts objects
     */
     function findAll($arguments = null) {
       if(isset($this) && instance_of($this, 'Contacts')) {
@@ -269,7 +273,7 @@
     * @param integer $current_page Current page number
     * @return array
     */
-    function paginate($arguments = null, $items_per_page = 10, $current_page = 1) {
+    function paginate($arguments = null, $items_per_page = 10, $current_page = 1, $count = null) {
       if(isset($this) && instance_of($this, 'Contacts')) {
         return parent::paginate($arguments, $items_per_page, $current_page);
       } else {
@@ -283,7 +287,7 @@
     *
     * @return Contacts 
     */
-    function instance() {
+    static function instance() {
       static $instance;
       if(!instance_of($instance, 'Contacts')) {
         $instance = new Contacts();

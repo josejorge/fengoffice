@@ -4,18 +4,35 @@ class BillingController extends ApplicationController {
 
 	function __construct() {
 		parent::__construct();
+		if(Plugins::instance()->isActivePlugin("income")){
+			Env::useHelper('functions', 'income');
+		}
+		
 		prepare_company_website_controller($this, 'website');
 		//ajx_set_panel("administration");
 
 		// Access permissios
-		if(!logged_user()->isCompanyAdmin(owner_company())) {
+		if(!can_manage_billing(logged_user())) {
 			flash_error(lang('no access permissions'));
 			ajx_current("empty");
 		} // if
 	}
 	
 	function index() {
-		tpl_assign('billing_categories', BillingCategories::findAll());
+		$can_see_billing_info = true;
+		Hook::fire('get_can_see_billing_information', array('user'=>logged_user()), $can_see_billing_info);
+		$can_see_cost_info = true;
+    	Hook::fire('get_can_see_cost_information', array('user'=>logged_user()), $can_see_cost_info);
+
+		if (!$can_see_billing_info || !$can_see_cost_info) {
+			flash_error(lang('no access permissions'));
+			ajx_current('empty');			
+			return;
+		}
+	}
+	
+	function list_all() {
+		tpl_assign('billing_categories', BillingCategories::instance()->findAll());
 	}
 
 	function add() {
@@ -65,7 +82,7 @@ class BillingController extends ApplicationController {
 	function edit() {
 		$this->setTemplate('add');
 		
-		$billingCategory = BillingCategories::findById(get_id());
+		$billingCategory = BillingCategories::instance()->findById(get_id());
 		if(!($billingCategory instanceof BillingCategory)) {
 			flash_error(lang('billing category dnx'));
 			ajx_current("empty");
@@ -116,7 +133,7 @@ class BillingController extends ApplicationController {
 	function delete() {
 		ajx_current("empty");
 		
-		$billingCategory = BillingCategories::findById(get_id());
+		$billingCategory = BillingCategories::instance()->findById(get_id());
 		if(!($billingCategory instanceof BillingCategory)) {
 			flash_error(lang('billing category dnx'));
 			return;
@@ -150,7 +167,7 @@ class BillingController extends ApplicationController {
 			try {
 				DB::beginWork();
 				foreach ($users_data as $user_id => $user_billing){
-					$user = Contacts::findById($user_id);
+					$user = Contacts::instance()->findById($user_id);
 					if ($user_billing != $user->getDefaultBillingId()){
 						$user->setDefaultBillingId($user_billing);
 						$user->save();
@@ -167,7 +184,7 @@ class BillingController extends ApplicationController {
 		}
 		
 		tpl_assign('users_by_company', Contacts::getGroupedByCompany(false));
-		tpl_assign('billing_categories', BillingCategories::findAll());
+		tpl_assign('billing_categories', BillingCategories::instance()->findAll());
 	}
 	
 	

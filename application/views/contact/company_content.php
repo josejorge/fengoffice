@@ -7,7 +7,7 @@
     <div  class="link-ico ico-email"><h2><?php echo lang('email address') ?></h2></div>
     <div class="cardBlock">
       <?php 
-		$all_emails = ContactEmails::findAll(array('conditions' => 'contact_id='.$company->getId(), 'order' => 'is_main DESC'));
+		$all_emails = ContactEmails::instance()->findAll(array('conditions' => 'contact_id='.$company->getId(), 'order' => 'is_main DESC'));
 		foreach ($all_emails as $email) {
 			if ($email->getIsMain()) { ?>
 				<div><a <?php echo logged_user()->hasMailAccounts() ? 
@@ -57,6 +57,7 @@
     		
 			$out = $address->getStreet();
 			if($address->getCity() != '') $out .= ' - ' . $address->getCity();
+			if($address->getZipCode() != '') $out .= ' - ' . $address->getZipCode();
 			if($address->getState() != '') $out .= ' - ' . $address->getState();
 			if($address->getCountry() != '') $out .= ' - ' . $address->getCountryName();
 			
@@ -80,7 +81,7 @@
 			$type = $webpage->getWebpageType();
 			$type_name = $type instanceof WebpageType ? '<span class="bold">'.lang($type->getName()) . ': </span>' : '';
 			
-		?><div><?php echo $type_name ?><a target="_blank" href="<?php echo $webpage->getUrl() ?>"><?php echo clean($webpage->getUrl()) ?></a></div>
+		?><div><?php echo $type_name ?><a target="_blank" href="<?php echo $webpage->getFixedUrl() ?>"><?php echo clean($webpage->getUrl()) ?></a></div>
 		
 <?php   } ?>
 <?php } else { 

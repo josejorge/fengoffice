@@ -121,7 +121,7 @@
 					if (del_prop_link.style.display != 'none') {
 						this.drawDimensionProperties(genid, document.getElementById(genid + 'dimension_id').value);
 					}
-					Ext.get(genid + 'property_links').setDisplayed(true);
+				//	Ext.get(genid + 'property_links').setDisplayed(true);
 				} else {
 					Ext.get(genid + 'property_links').setDisplayed(false);
 					var properties_container = Ext.get(genid + 'dimension_properties');
@@ -185,11 +185,11 @@
 					case 'WSCOLOR':
 						html += '<input name="dim_obj[' + f.col + ']" id="'+ genid + 'dim_obj_' + f.col +'" class="color-code" type="hidden" value="'+f.val+'" />';
 						html += "<div class='ws-color-chooser'>";
-						for (var i=1; i<=24; i++) {
+						for (var i=0; i<=24; i++) {
 							var cls = (f.val == i)?'selected':'';
 							html += "<div  class='ico-color"+i+ " "+ cls + " color-cell'  onClick='$(\"input.color-code\").val(\""+i+"\");$(\".color-cell\").removeClass(\"selected\");$(this).addClass(\"selected\");'></div>";
 							if (i==12) {
-								html+=	'<div class="x-clear"></div>';
+								html+=	'<div class="x-clear"></div><div style="width:20px;float:left;height:10px;"></div>';
 							}
 						}
 						html+=	'<div class="x-clear"></div>';

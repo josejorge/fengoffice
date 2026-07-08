@@ -27,13 +27,13 @@ class TimeslotController extends ApplicationController {
 	 * @return null
 	 */
 	function open() {
-		
+
 		$this->setTemplate('add_timeslot');
 
 		$object_id = get_id('object_id');
 
 		$object = Objects::findObject($object_id);
-		if(!($object instanceof ContentDataObject) || !($object->canAddTimeslot(logged_user()))) {
+		if($object instanceof ContentDataObject && !($object->canAddTimeslot(logged_user()))) {
 			flash_error(lang('no access permissions'));
 			ajx_current("empty");
 			return;
@@ -43,16 +43,35 @@ class TimeslotController extends ApplicationController {
 		$dt = DateTimeValueLib::now();
 		$timeslot->setStartTime($dt);
 		$timeslot->setContactId(logged_user()->getId());
-		$timeslot->setRelObjectId($object_id);
+		if ($object instanceof ContentDataObject) {
+			$timeslot->setRelObjectId($object_id);
+		}
+        
+		if (Plugins::instance()->isActivePlugin('advanced_billing')) {
+			$invoicing_status = 'pending';
+			Hook::fire('get_initial_invoicing_status_for_timeslot_using_members_and_task', array('task_id' => $object_id, 'get_task_members' => true), $invoicing_status);
+			$timeslot->setColumnValue('invoicing_status', $invoicing_status);
+		}
+
+        $allOpenTimeslot = Timeslots::getAllOpenTimeslotByObjectByUser(logged_user());
 		
 		try{
 			DB::beginWork();
+            
+            foreach ($allOpenTimeslot as $time){
+			   $this->handle_open_timeslot($time);
+            }
+			
 			$timeslot->save();
 			
-			/*	dont add timeslots to members, members are taken from the related object
 			$object_controller = new ObjectController();
-			$object_controller->add_to_members($timeslot, $object->getMemberIds());
-			*/
+			if ($object instanceof ContentDataObject) {
+				$object_controller->add_to_members($timeslot, $object->getMemberIds());
+			} else {
+				$object_controller->add_to_members($timeslot, active_context_members(false));
+			}
+			
+			
 			DB::commit();
 			ApplicationLogs::createLog($timeslot, ApplicationLogs::ACTION_OPEN);
 			
@@ -79,7 +98,7 @@ class TimeslotController extends ApplicationController {
 
 		$timeslot_data = array_var($_POST, 'timeslot');
 		$hours = array_var($timeslot_data, 'hours');
-                $minutes = array_var($timeslot_data, 'minutes');
+		$minutes = array_var($timeslot_data, 'minutes');
 		
 		if (strpos($hours,',') && !strpos($hours,'.')) {
 			$hours = str_replace(',','.',$hours);
@@ -105,30 +124,32 @@ class TimeslotController extends ApplicationController {
 			$timeslot->setContactId(array_var($timeslot_data, 'contact_id', logged_user()->getId()));
 			$timeslot->setRelObjectId($object_id);
 			
-			$user = Contacts::findById(array_var($timeslot_data, 'contact_id', logged_user()->getId()));
-			$billing_category_id = $user->getDefaultBillingId();
-			$bc = BillingCategories::findById($billing_category_id);
-			if ($bc instanceof BillingCategory) {
-				$timeslot->setBillingId($billing_category_id);
-				$hourly_billing = $bc->getDefaultValue();
-				$timeslot->setHourlyBilling($hourly_billing);
-				$timeslot->setFixedBilling(number_format($hourly_billing * $hours, 2));
-				$timeslot->setIsFixedBilling(false);
+			// Billing
+			if (!Plugins::instance()->isActivePlugin('advanced_billing')) {
+				$user = Contacts::instance()->findById(array_var($timeslot_data, 'contact_id', logged_user()->getId()));
+				$billing_category_id = $user->getDefaultBillingId();
+				$bc = BillingCategories::instance()->findById($billing_category_id);
+				if ($bc instanceof BillingCategory) {
+					$timeslot->setBillingId($billing_category_id);
+					$hourly_billing = $bc->getDefaultValue();
+					$timeslot->setHourlyBilling($hourly_billing);
+					$timeslot->setFixedBilling(number_format($hourly_billing * $hours, 2));
+					$timeslot->setIsFixedBilling(false);
+				}
+				$currency_info = Currencies::getDefaultCurrencyInfo();
+				$timeslot->setRateCurrencyId($currency_info['id']);
 			}
-			
 
 			try{
 				DB::beginWork();
 				$timeslot->save();
-				/*	dont add timeslots to members, members are taken from the related object
-				 $object_controller = new ObjectController();
-				$object_controller->add_to_members($timeslot, $object->getMemberIds());
-				*/
-				
 
-				$task = ProjectTasks::findById($object_id);
+				$task = ProjectTasks::instance()->findById($object_id);
 				if($task instanceof ProjectTask) {
-					$task->calculatePercentComplete();	
+					$task->calculatePercentComplete();
+					
+					$object_controller = new ObjectController();
+					$object_controller->add_to_members($timeslot, $task->getMemberIds());
 				}
 					
 				DB::commit();
@@ -158,7 +179,8 @@ class TimeslotController extends ApplicationController {
 
 		$this->setTemplate('add_timeslot');
 
-		$timeslot = Timeslots::findById(get_id());
+		$cancel_timer = array_var($_GET, 'cancel') && array_var($_GET, 'cancel') == 'true';
+		$timeslot = Timeslots::instance()->findById(get_id());
 		if(!($timeslot instanceof Timeslot)) {
 			flash_error(lang('timeslot dnx'));
 			ajx_current("empty");
@@ -166,13 +188,7 @@ class TimeslotController extends ApplicationController {
 		}
 
 		$object = $timeslot->getRelObject();
-		if(!($object instanceof ContentDataObject)) {
-			flash_error(lang('object dnx'));
-			ajx_current("empty");
-			return;
-		}
-		
-		if(!($object->canAddTimeslot(logged_user()))) {
+		if($object instanceof ContentDataObject && !($object->canAddTimeslot(logged_user()))) {
 			flash_error(lang('no access permissions'));
 			ajx_current("empty");
 			return;
@@ -180,63 +196,165 @@ class TimeslotController extends ApplicationController {
 		$timeslot_data = array_var($_POST, 'timeslot');
 		$timeslot->close();
 		$timeslot->setFromAttributes($timeslot_data);
-		
+
+		Hook::fire('round_minutes_to_fifteen', array('timeslot' => $timeslot), $ret);
 		//Billing
-		$user = Contacts::findById(array_var($timeslot_data, 'contact_id', logged_user()->getId()));
-		$billing_category_id = $user->getDefaultBillingId();
-		$bc = BillingCategories::findById($billing_category_id);
-		if ($bc instanceof BillingCategory) {
-			$timeslot->setBillingId($billing_category_id);
-			$hourly_billing = $bc->getDefaultValue();
-			$timeslot->setHourlyBilling($hourly_billing);
-			$timeslot->setFixedBilling(number_format($hourly_billing * $hours, 2));
-			$timeslot->setIsFixedBilling(false);
+		if (!Plugins::instance()->isActivePlugin('advanced_billing')) {
+			$user = Contacts::instance()->findById(array_var($timeslot_data, 'contact_id', logged_user()->getId()));
+			$billing_category_id = $user->getDefaultBillingId();
+			$bc = BillingCategories::instance()->findById($billing_category_id);
+			if ($bc instanceof BillingCategory) {
+				$timeslot->setBillingId($billing_category_id);
+				$hourly_billing = $bc->getDefaultValue();
+				$timeslot->setHourlyBilling($hourly_billing);
+				$timeslot->setFixedBilling(number_format($hourly_billing * $hours, 2));
+				$timeslot->setIsFixedBilling(false);
+			}
 		}
 		
 		try{
-			DB::beginWork();
-			if (array_var($_GET, 'cancel') && array_var($_GET, 'cancel') == 'true')
-				$timeslot->delete();
-			else
-				$timeslot->save();
+			// to use when saving the application log
+			$old_content_object = $timeslot->generateOldContentObjectData();
 			
+			DB::beginWork();
+			if (array_var($_GET, 'cancel') && array_var($_GET, 'cancel') == 'true'){
+				$timeslot->delete();
+			}else{
+				$timeslot->save();
+			}
+			
+			$object = $timeslot->getRelObject();
 			if($object instanceof ProjectTask) {
-				$object->calculatePercentComplete();				
+				$object->calculatePercentComplete();
+				Hook::fire('calculate_estimated_and_executed_financials', array(), $object);
 			}
 			
 			DB::commit();
-			ApplicationLogs::createLog($timeslot, ApplicationLogs::ACTION_CLOSE);
-				
-			if (array_var($_GET, 'cancel') && array_var($_GET, 'cancel') == 'true')
+			if($object instanceof ProjectTask) {
+				$this->notifier_work_estimate($object);
+			}
+			
+			if (array_var($_GET, 'cancel') && array_var($_GET, 'cancel') == 'true') {
 				flash_success(lang('success cancel timeslot'));
-			else
-				flash_success(lang('success close timeslot'));
-				
+			} else { 
+				Hook::fire('after_timer_closed', $timeslot, $ret);
+				flash_success(lang('success close timeslot', ''));
+			}	
+			
+			ApplicationLogs::createLog($timeslot, ApplicationLogs::ACTION_CLOSE);
+
 			ajx_current("reload");
 		} catch (Exception $e) {
 			DB::rollback();
 			ajx_current("empty");
 			flash_error($e->getMessage());
 		}
-	} 
+	}
+	
+	function close_timer() {
+		$this->setTemplate('close_timer');
+		$timeslot = Timeslots::instance()->findById(get_id());
+		if(!($timeslot instanceof Timeslot)) {
+			flash_error(lang('timeslot dnx'));
+			ajx_current("empty");
+			return;
+		}
+
+		$object = $timeslot->getRelObject();
+		if($object instanceof ContentDataObject && !($object->canAddTimeslot(logged_user()))) {
+			flash_error(lang('no access permissions'));
+			ajx_current("empty");
+			return;
+		}
+
+		tpl_assign('timeslot', $timeslot);
+	}
+		
+		
+	
+
+	function handle_open_timeslot($time) {
+		$config = user_config_option('stop_running_timeslots');
+		if($config == 1) {
+			$this->internal_close($time);
+		} else if ($config == 2) {
+			$this->internal_pause($time);
+		}
+	}
+	
+	function internal_close($time){ 
+	    $config = user_config_option('stop_running_timeslots') == 1; 
+	    if ($config){
+			// to use when saving the application log
+			$old_content_object = $time->generateOldContentObjectData();
+
+            $date = format_date(null,DATE_MYSQL);
+			$time->getEndTime($date);
+			$time->close();
+			Hook::fire('round_minutes_to_fifteen', array('timeslot' => $time), $ret);
+        
+            //Billing
+            if (!Plugins::instance()->isActivePlugin('advanced_billing')) {
+                $user = Contacts::instance()->findById($time->getContactId());
+                $billing_category_id = $user->getDefaultBillingId();
+                $bc = BillingCategories::instance()->findById($billing_category_id);
+                if ($bc instanceof BillingCategory) {
+                    $time->setBillingId($billing_category_id);
+                    $hourly_billing = $bc->getDefaultValue();
+                    $time->setHourlyBilling($hourly_billing);
+                    $time->setFixedBilling(number_format($hourly_billing * $hours, 2));
+                    $time->setIsFixedBilling(false);
+                }
+            }
+            $time->save();
+            
+            $object = $time->getRelObject();
+            if($object instanceof ProjectTask) {
+                $object->calculatePercentComplete();
+            }
+            
+			ApplicationLogs::createLog($time, ApplicationLogs::ACTION_CLOSE, false, true);
+        }
+    }
+
+	function internal_pause($time) {
+		$config = user_config_option('stop_running_timeslots') == 2; 
+		$is_paused = $time->isPaused();
+	    if ($config && !$is_paused){
+			try{
+				// to use when saving the application log
+				$old_content_object = $time->generateOldContentObjectData();
+
+				DB::beginWork();
+				$time->pause();
+				$time->save();
+				DB::commit();
+				
+				ApplicationLogs::createLog($time, ApplicationLogs::ACTION_EDIT, false, true);
+
+			//	flash_success(lang('success pause timeslot'));
+				ajx_current("reload");
+			} catch (Exception $e) {
+				DB::rollback();
+				flash_error($e->getMessage());
+			}
+        
+            
+       }
+	}
 	
 	function pause() {
 
 		ajx_current("empty");
 
-		$timeslot = Timeslots::findById(get_id());
+		$timeslot = Timeslots::instance()->findById(get_id());
 		if(!($timeslot instanceof Timeslot)) {
 			flash_error(lang('timeslot dnx'));
 			return;
 		}
 
 		$object = $timeslot->getRelObject();
-		if(!($object instanceof ContentDataObject)) {
-			flash_error(lang('object dnx'));
-			return;
-		}
-		
-		if(!($object->canAddTimeslot(logged_user()))) {
+		if($object instanceof ContentDataObject && !($object->canAddTimeslot(logged_user()))) {
 			flash_error(lang('no access permissions'));
 			return;
 		}
@@ -247,10 +365,15 @@ class TimeslotController extends ApplicationController {
 		}
 		
 		try{
+			// to use when saving the application log
+			$old_content_object = $timeslot->generateOldContentObjectData();
+
 			DB::beginWork();
 			$timeslot->pause();
 			$timeslot->save();
 			DB::commit();
+
+			ApplicationLogs::createLog($timeslot, ApplicationLogs::ACTION_EDIT);
 				
 			flash_success(lang('success pause timeslot'));
 			ajx_current("reload");
@@ -264,19 +387,14 @@ class TimeslotController extends ApplicationController {
 
 		ajx_current("empty");
 
-		$timeslot = Timeslots::findById(get_id());
+		$timeslot = Timeslots::instance()->findById(get_id());
 		if(!($timeslot instanceof Timeslot)) {
 			flash_error(lang('timeslot dnx'));
 			return;
 		}
 
 		$object = $timeslot->getRelObject();
-		if(!($object instanceof ContentDataObject)) {
-			flash_error(lang('object dnx'));
-			return;
-		}
-		
-		if(!($object->canAddTimeslot(logged_user()))) {
+		if($object instanceof ContentDataObject && !($object->canAddTimeslot(logged_user()))) {
 			flash_error(lang('no access permissions'));
 			return;
 		}
@@ -285,14 +403,21 @@ class TimeslotController extends ApplicationController {
 			flash_error(lang('no access permissions'));
 			return;
 		}
+
 		
 		try{
+			// to use when saving the application log
+			$old_content_object = $timeslot->generateOldContentObjectData();
+
 			DB::beginWork();
+			
 			$timeslot->resume();
 			$timeslot->save();
 			DB::commit();
-				
-			flash_success(lang('success pause timeslot'));
+			
+			ApplicationLogs::createLog($timeslot, ApplicationLogs::ACTION_OPEN);
+
+			flash_success(lang('success resume timeslot'));
 			ajx_current("reload");
 		} catch (Exception $e) {
 			DB::rollback();
@@ -310,7 +435,7 @@ class TimeslotController extends ApplicationController {
 
 		$this->setTemplate('add_timeslot');
 		
-		$timeslot = Timeslots::findById(get_id());
+		$timeslot = Timeslots::instance()->findById(get_id());
 		if(!($timeslot instanceof Timeslot)) {
 			flash_error(lang('timeslot dnx'));
 			ajx_current("empty");
@@ -345,6 +470,7 @@ class TimeslotController extends ApplicationController {
           		'end_time' => $timeslot->getEndTime(),
           		'is_fixed_billing' => $timeslot->getIsFixedBilling(),
           		'hourly_billing' => $timeslot->getHourlyBilling(),
+          		'rate_currency_id' => $timeslot->getRateCurrencyId(),
           		'fixed_billing' => $timeslot->getFixedBilling()
 			);
 		}
@@ -352,25 +478,39 @@ class TimeslotController extends ApplicationController {
 		tpl_assign('timeslot_form_object', $object);
 		tpl_assign('timeslot', $timeslot);
 		tpl_assign('timeslot_data', $timeslot_data);
-		tpl_assign('show_billing', BillingCategories::count() > 0);
+		tpl_assign('show_billing', BillingCategories::instance()->count() > 0);
 		
 		if(is_array(array_var($_POST, 'timeslot'))) {
 			try {
+				// to use when saving the application log
+				$old_content_object = $timeslot->generateOldContentObjectData();
+
+				$old_user_id = $timeslot->getContactId();
+				
+				$timeslot->setFromAttributes($timeslot_data);
 				
 				$timeslot->setContactId(array_var($timeslot_data, 'contact_id', logged_user()->getId()));
 				$timeslot->setDescription(array_var($timeslot_data, 'description'));
+				
+				if ($timeslot->getContactId() != $old_user_id) {
+					$timeslot->setForceRecalculateBilling(true);
+				}
        			
 				$st = getDateValue(array_var($timeslot_data, 'start_value'),DateTimeValueLib::now());
-				$st->setHour(array_var($timeslot_data, 'start_hour'));
-				$st->setMinute(array_var($timeslot_data, 'start_minute'));
+				$s_time = getTimeValue(array_var($timeslot_data, 'start_time'));
+				$st->setHour($s_time['hours']);
+				$st->setMinute($s_time['mins']);
 				
 				$et = getDateValue(array_var($timeslot_data, 'end_value'),DateTimeValueLib::now());
-				$et->setHour(array_var($timeslot_data, 'end_hour'));
-				$et->setMinute(array_var($timeslot_data, 'end_minute'));
+				$e_time = getTimeValue(array_var($timeslot_data, 'end_time'));
+				$et->setHour($e_time['hours']);
+				$et->setMinute($e_time['mins']);
 				
-				$st = new DateTimeValue($st->getTimestamp() - logged_user()->getTimezone() * 3600);
-				$et = new DateTimeValue($et->getTimestamp() - logged_user()->getTimezone() * 3600);
-                                $timeslot->setStartTime($st);
+				$tz_offset = Timezones::getTimezoneOffsetToApply($timeslot);
+				
+				$st = new DateTimeValue($st->getTimestamp() - $tz_offset);
+				$et = new DateTimeValue($et->getTimestamp() - $tz_offset);
+				$timeslot->setStartTime($st);
 				$timeslot->setEndTime($et);
 				
 				if ($timeslot->getStartTime() > $timeslot->getEndTime()){
@@ -413,14 +553,22 @@ class TimeslotController extends ApplicationController {
 					if ($timeslot->getBillingId() == 0 && ($timeslot->getHourlyBilling() > 0 || $timeslot->getFixedBilling() > 0)){
 						$timeslot->setBillingId($timeslot->getUser()->getDefaultBillingId());
 					}
+					$currency_info = Currencies::getDefaultCurrencyInfo();
+					$timeslot->setRateCurrencyId($currency_info['id']);
 				}
 				
 				DB::beginWork();
 				$timeslot->save();
 				
-				$task = ProjectTasks::findById($timeslot->getRelObjectId());
+				$task = ProjectTasks::instance()->findById($timeslot->getRelObjectId());
 				if($task instanceof ProjectTask) {
 					$task->calculatePercentComplete();
+				}
+				
+				$member_ids = json_decode(array_var($_POST, 'members'));
+				if (!is_null($member_ids)) {
+					$object_controller = new ObjectController();
+					$object_controller->add_to_members($timeslot, $member_ids);
 				}
 				
 				DB::commit();
@@ -445,8 +593,8 @@ class TimeslotController extends ApplicationController {
 	 * @return null
 	 */
 	function delete() {
-
-		$timeslot = Timeslots::findById(get_id());
+		
+		$timeslot = Timeslots::instance()->findById(get_id());
 		if(!($timeslot instanceof Timeslot)) {
 			flash_error(lang('timeslot dnx'));
 			ajx_current("empty");
@@ -490,11 +638,138 @@ class TimeslotController extends ApplicationController {
 		}
 
 	} // delete
+	
+	function delete_all_from_task() {
+	    $task_id = get_id('object_id');
+	    $timeslots = Timeslots::instance()->findAll(array('conditions' => array('`rel_object_id` = ? AND trashed_by_id=0', $task_id)));
+	    
+	    if (!is_array($timeslots) || !count($timeslots)){	    
+	        flash_error(lang('there are no timeslots to delete'));
+	        ajx_current("empty");
+	        return;
+	    }
+	    
+        try {            
+
+            DB::beginWork();
+            
+            foreach($timeslots as $timeslot) {
+                
+                if(!($timeslot instanceof Timeslot)) {                    
+                    continue;
+                }
+                
+                $object = $timeslot->getRelObject();
+                if(!($object instanceof ContentDataObject)) {
+                    continue;
+                }
+                
+                if($timeslot->canDelete(logged_user())) {
+
+					if(Plugins::instance()->isActivePlugin('income') && $timeslot->getColumnValue('invoicing_status') == 'invoiced'){
+						flash_error(lang('you cannot delete invoiced time entry'));
+						ajx_current("empty");
+						return;
+					}
+
+					$timeslot->trash();
+
+                    // $timeslot->delete();
+                    $object->onDeleteTimeslot($timeslot);
+                    
+                    if ($object instanceof ProjectTask) {
+                        $object->calculatePercentComplete();
+                    }
+                }
+                                
+                
+            }            
+            DB::commit();
+            
+            foreach($timeslots as $timeslot) {
+                ApplicationLogs::createLog($timeslot, ApplicationLogs::ACTION_DELETE);
+            }
+                        
+            flash_success(lang('success delete all timeslot'));
+            ajx_current("reload");
+        } catch(Exception $e) {
+            DB::rollback();
+            flash_error(lang('error delete all timeslot'));
+            ajx_current("empty");
+        }
+
+	}
+
+	function taskHasInvoicedTimeslots($task){
+		$result = false;
+		if(Plugins::instance()->isActivePlugin('income') && $task instanceof ProjectTask){
+			$task_id = $task->getObjectId();
+			$timeslots = Timeslots::instance()->findAll(array('conditions' => array('`rel_object_id` = ' . $task_id . ' AND `invoicing_status`="invoiced"')));
+			if (count($timeslots)){	    
+				$result = true;
+			}	
+		} 
+		return $result;
+	}
 
 	function notifier_work_estimate($task){
 		if($task->getPercentCompleted() > 100){
 			Notifier::workEstimate($task);
 		}
+	}
+	
+	
+	function get_users_for_timeslot() {
+		ajx_current("empty");
+		$user_info = array();
+		
+		if (can_manage_time(logged_user())) {
+			
+			$timeslot = Timeslots::instance()->findById(get_id());
+			
+			$rel_object = null;
+			if (array_var($_GET, 'task_id')) {
+				$rel_object = ProjectTasks::instance()->findById(array_var($_GET, 'task_id'));
+			}
+			
+			if (is_null($rel_object) && $timeslot instanceof Timeslot) {
+				$rel_object = $timeslot->getRelObject();
+			}
+			
+			if (can_manage_time(logged_user())) {
+				if (logged_user()->isMemberOfOwnerCompany()) {
+					$users = Contacts::getAllUsers();
+				} else {
+					$users = logged_user()->getCompanyId() > 0 ? Contacts::getAllUsers(" AND `company_id` = ". logged_user()->getCompanyId()) : array(logged_user());
+				}
+			} else {
+				$users = array(logged_user());
+			}
+			$tmp_users = array();
+			foreach ($users as $user) {
+				
+				if ($rel_object instanceof ProjectTask) {
+					$is_assigned = $rel_object->getAssignedToContactId() == $user->getId();
+					$members = $rel_object->getMembers();
+				} else {
+					$is_assigned = false;
+					$members = $timeslot instanceof Timeslot ? $timeslot->getMembers() : array();
+				}
+				
+				if ($is_assigned || can_add($user, $members, Timeslots::instance()->getObjectTypeId())) {
+					$tmp_users[] = $user;
+				}
+			}
+			$users = $tmp_users;
+			
+			$user_info = array();
+			foreach ($users as $user) {
+				$user_info[] = array('id' => $user->getId(), 'name' => $user->getObjectName());
+			}
+			
+		}
+		
+		ajx_extra_data(array('users' => $user_info));
 	}
 
 } // TimeslotController

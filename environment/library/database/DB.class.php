@@ -4,8 +4,9 @@
  * This function holds open database connections and provides interface to them. It is also used
  * for SQL logging
  *
- * @version 1.0
- * @author Ilija Studen <ilija.studen@gmail.com>
+ * @version 3.7
+ * @author Ilija Studen
+ * @author Feng Office 
  */
 final class DB {
 
@@ -72,7 +73,16 @@ final class DB {
 	} // connect
 
 	static function close() {
-		self::connection()->close();
+	    try {
+	        if (!is_null(self::connection()))
+    		  self::connection()->close();
+	    } catch (Exception $e) {
+	        if (defined('LOG_SQL_ERRORS') && LOG_SQL_ERRORS) {
+	            Logger::log("SQL ERROR: " . $e->getMessage());
+	
+	        }
+	        throw $e;
+	    }
 	}
 
 	/**
@@ -85,7 +95,7 @@ final class DB {
 	 * @throws DBAdapterDnx
 	 * @throws DBConnectError
 	 */
-	private function connectAdapter($adapter_name, $params) {
+	private static function connectAdapter($adapter_name, $params) {
 
 		self::useAdapter($adapter_name);
 
@@ -105,7 +115,7 @@ final class DB {
 	 * @param string $adapter_class
 	 * @return void
 	 */
-	private function useAdapter($adapter_name) {
+	private static function useAdapter($adapter_name) {
 		$adapter_class = self::getAdapterClass($adapter_name);
 		$path = dirname(__FILE__) . "/adapters/$adapter_class.class.php";
 		if(!is_readable($path)) throw new FileDnxError($path);
@@ -119,7 +129,7 @@ final class DB {
 	 * @param string $adapter_name
 	 * @return string
 	 */
-	private function getAdapterClass($adapter_name) {
+	private static function getAdapterClass($adapter_name) {
 		return Inflector::camelize($adapter_name) . 'DBAdapter';
 	} // getAdapterClass
 
@@ -376,6 +386,17 @@ final class DB {
 	static function getSQLLog() {
 		return self::$sql_log;
 	} // getSQLLog
+	
+	/**
+	 * Return cleaned string for doing full text search
+	 *
+	 * @access public
+	 * @param string $string
+	 * @return string
+	 */
+	static function cleanStringToFullSearch($string) {
+	    return str_replace( array( '-', '+', '~' , '(', ')','<','>','*','"' ), ' ', $string);
+	}
 
 } // DB
 

@@ -28,6 +28,7 @@
     	'ordering' => DATA_TYPE_INTEGER,
     	'plugin_id' => DATA_TYPE_INTEGER,
     	'object_type_id' => DATA_TYPE_INTEGER,
+    	'url_params' => DATA_TYPE_STRING,
     );
   
     /**
@@ -208,7 +209,7 @@
     * @param integer $current_page Current page number
     * @return array
     */
-    function paginate($arguments = null, $items_per_page = 10, $current_page = 1) {
+    function paginate($arguments = null, $items_per_page = 10, $current_page = 1, $count = null) {
       if(isset($this) && instance_of($this, 'TabPanels')) {
         return parent::paginate($arguments, $items_per_page, $current_page);
       } else {
@@ -221,7 +222,7 @@
     *
     * @return TabPanels 
     */
-    function instance() {
+    static function instance() {
       static $instance;
       if(!instance_of($instance, 'TabPanels')) {
         $instance = new TabPanels();

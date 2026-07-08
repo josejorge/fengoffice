@@ -22,7 +22,8 @@
     	'config_handler_class' => DATA_TYPE_STRING, 
     	'is_system' => DATA_TYPE_BOOLEAN, 
     	'option_order' => DATA_TYPE_INTEGER, 
-    	'dev_comment' => DATA_TYPE_STRING
+    	'dev_comment' => DATA_TYPE_STRING, 
+    	'options' => DATA_TYPE_STRING
     );
   
     /**
@@ -204,7 +205,7 @@
     * @param integer $current_page Current page number
     * @return array
     */
-    function paginate($arguments = null, $items_per_page = 10, $current_page = 1) {
+    function paginate($arguments = null, $items_per_page = 10, $current_page = 1, $count = null) {
       if(isset($this) && instance_of($this, 'ContactConfigOptions')) {
         return parent::paginate($arguments, $items_per_page, $current_page);
       } else {
@@ -217,7 +218,7 @@
     *
     * @return ContactConfigOptions 
     */
-    function instance() {
+    static function instance() {
       static $instance;
       if(!instance_of($instance, 'ContactConfigOptions')) {
         $instance = new ContactConfigOptions();

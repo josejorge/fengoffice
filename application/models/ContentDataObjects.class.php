@@ -18,7 +18,7 @@ abstract class ContentDataObjects extends DataManager {
 	}
 	
 	function getObjectTypeId() {
-		if (!$this instanceof ContentDataObjects || is_null($this->object_type_name)) {
+		if (!isset($this) || is_null($this->object_type_name)) {
 			return null;
 		}		
 		if (is_null($this->object_type_id)) {
@@ -37,7 +37,46 @@ abstract class ContentDataObjects extends DataManager {
 	 * Must be overriden by the specific object classes
 	 */
 	function getPublicColumns() {
+		$public_columns = array();
+		Hook::fire('modify_content_object_public_columns', $this, $public_columns);
+		return $public_columns;
+	}
+	
+	
+	/**
+	 * Returns the numeric fields that store a time value
+	 * Must be overriden by the specific object classes
+	 */
+	function getTimeColumns() {
 		return array();
+	}
+
+	/**
+	 * Return system columns
+	 *
+	 * @access public
+	 * @param void
+	 * @return array
+	 */
+	function getSystemColumns() {
+		$system_columns = parent::getSystemColumns();
+		Hook::fire('additional_system_columns', $this, $system_columns);
+		
+		return $system_columns;
+	}
+	
+	/**
+	 * Return system columns
+	 *
+	 * @access public
+	 * @param void
+	 * @return array
+	 */
+	function getExternalColumns() {
+		$external_columns = parent::getExternalColumns();
+		Hook::fire('additional_external_columns', $this, $external_columns);
+		
+		return $external_columns;
 	}
 	
 	/**
@@ -60,16 +99,19 @@ abstract class ContentDataObjects extends DataManager {
 	 * This method is required to be overriden by classes that manage 'dimension_objects'
 	 */
 	function newDimensionObject() {
-		$ot = ObjectTypes::findById($this->getObjectTypeId());
+		$ot = ObjectTypes::instance()->findById($this->getObjectTypeId());
 		eval('$manager = '.$ot->getHandlerClass().'::instance();');
 		eval('$object = new '.$manager->getItemClass().'();');
+		if (isset($object) && $object) {
+			$object->setObjectTypeId($this->getObjectTypeId());
+		}
 		return $object;
 	}
 	
 	
 	function sqlFields($all = true) {
 		$common_fields = array() ;
-		foreach ( Objects::getColumns() as $col ) {
+		foreach ( Objects::instance()->getColumns() as $col ) {
 			$common_fields[] = "o.$col AS `$col`";
 		}
 		if (!$all) {
@@ -94,7 +136,7 @@ abstract class ContentDataObjects extends DataManager {
 	 * @author Pepe
 	 */
 	/*
-	function paginate($arguments = null, $items_per_page = 10, $current_page = 1) {
+	function paginate($arguments = null, $items_per_page = 10, $current_page = 1, $count = null) {
 	
 		
 		if (isset ( $this ) && instance_of ( $this, 'ContentDataObjects' )) {
@@ -149,7 +191,7 @@ abstract class ContentDataObjects extends DataManager {
     *  - offset - limit offset, valid only if limit is present
     *  - limit
     * 
-    * @return one or many objects
+    * @return array
     * @throws DBQueryError
     */
     function find($arguments = null) {
@@ -277,7 +319,7 @@ abstract class ContentDataObjects extends DataManager {
     * @return array
     */
     function loadRow($id) {
-        $ocols = Objects::getColumns();
+        $ocols = Objects::instance()->getColumns();
         $tcols = $this->getColumns();
     	$columns = array_map('db_escape_field', array_merge ($ocols, $tcols ) );
     	$table_prefix = defined('FORCED_TABLE_PREFIX') && FORCED_TABLE_PREFIX ? FORCED_TABLE_PREFIX : TABLE_PREFIX;
@@ -324,13 +366,13 @@ abstract class ContentDataObjects extends DataManager {
 	function findById($id, $force_reload = false) {
 		$co = parent::findById($id, $force_reload);
 		if (!is_null($co)) {
-			$co->setObject(Objects::findById($id, $force_reload));
+			$co->setObject(Objects::instance()->findById($id, $force_reload));
 		}
 		return $co;
 	}
 	
 	/**
-	 * Fermormance FIX: getContentObjects replacement
+	 * Permormance FIX: getContentObjects replacement
 	 * @param array $args 
 	 *		order = null  -  may be performance killer depending on the order criteria  
 	 * 		order_dir = null 
@@ -348,14 +390,24 @@ abstract class ContentDataObjects extends DataManager {
 	 *  	 
 	 */
 	public function listing($args = array()) {
-		$result = new stdClass;
-		$result->objects =array();
-		$result->total =array();
-		$type_id  = self::getObjectTypeId();
+
+	    //Initialization of variables
+	    $result = new stdClass;
+		$result->objects = array();
+		$result->total = array();
+		$type_id = isset($this) && $this instanceof ContentDataOBjects ? $this->getObjectTypeId() : 0;
+		$members = array ();
 		$SQL_BASE_JOIN = '';
+		$SQL_SEARCHABLE_OBJ_JOIN = '';
 		$SQL_EXTRA_JOINS = '';
 		$SQL_TYPE_CONDITION = 'true';
 		$SQL_FOUND_ROWS = '';
+        $SQL_BEFORE_COLUMNS = '';
+        $SQL_GROUP_BY = '';
+
+        if (isset($args['sql_before_columns'])) {
+            $SQL_BEFORE_COLUMNS = $args['sql_before_columns'];
+        }
 
 		if (isset($args['count_results'])) {
 			$count_results = $args['count_results'];
@@ -370,6 +422,7 @@ abstract class ContentDataObjects extends DataManager {
 			$only_count_results = false;
 		}
 		
+		
 		$return_raw_data = array_var($args,'raw_data');
 		$start = array_var($args,'start');
 		$limit = array_var($args,'limit');
@@ -377,10 +430,80 @@ abstract class ContentDataObjects extends DataManager {
 		$extra_member_ids =  array_var($args,'extra_member_ids');
 		$ignore_context = array_var($args,'ignore_context');
 		$include_deleted = (bool) array_var($args,'include_deleted');
+		$join_with_searchable_objects = array_var($args, 'join_with_searchable_objects');
+		$use_like_in_searchable_objects = array_var($args, 'use_like_in_searchable_objects');
 		$select_columns = array_var($args, 'select_columns');
-		if (empty($select_columns)) {
-			$select_columns = array('*');
+		$fire_additional_data_hook = array_var($args, 'fire_additional_data_hook', true);
+		$only_query_totals_row = array_var($args, 'only_query_totals_row');
+		$is_email_widget = array_var($args, 'is_email_widget');
+		$check_sharing_table = array_var($args, 'check_sharing_table', true);
+		
+		//text filter param
+		// ORG $text_filter = DB::cleanStringToFullSearch(array_var($_GET, 'text_filter'));
+		$text_filter = array_var($_GET, 'text_filter');
+		
+		$controller = array_var($_GET, 'c');
+		$text_filter_extra_conditions = ''; 
+		
+		if (trim($text_filter) != '') {
+		    
+		    //$join_with_searchable_objects = true;
+			$use_like_in_searchable_objects = true;
+			$select_columns = array('o.*,e.*');
+		    $text_filter = str_replace("'", "\'", trim($text_filter));
+		    
+		    if ($use_like_in_searchable_objects || is_numeric($text_filter)) {
+		    	if (is_numeric($text_filter)) {
+
+					//Clean text filter param
+					$text_filter = DB::cleanStringToFullSearch($text_filter);
+
+					$text_filter_str = "%$text_filter%";
+		    	} else {
+		    		$text_filter_str = "%$text_filter%";
+		    	}
+		    	/*$text_filter_extra_conditions .= "
+					AND so.content like '$text_filter_str'
+				";*/
+		    	$text_filter_extra_conditions .= "
+					AND EXISTS (SELECT * FROM ".TABLE_PREFIX."searchable_objects so WHERE so.rel_object_id=o.id AND so.content like '$text_filter_str')
+				";
+		    	
+		    } else {
+
+				//Clean text filter param
+				$text_filter = DB::cleanStringToFullSearch($text_filter);
+
+		    	$join_with_searchable_objects = true;
+		    	
+			    if(str_word_count($text_filter, 0) > 1){
+			        $text_filter_extra_conditions .= "
+									AND MATCH (so.content) AGAINST ('\"$text_filter\"' IN BOOLEAN MODE)
+							    ";
+			    }else{
+			        $text_filter_extra_conditions  .= "
+									AND MATCH (so.content) AGAINST ('$text_filter*' IN BOOLEAN MODE)
+							    ";
+			    }
+		    }
 		}
+		
+		if (empty($select_columns)) {
+		    if ($join_with_searchable_objects) {
+		        //$select_columns = array('DISTINCT(o.id),o.*,e.*');
+		        $select_columns = array('o.*,e.*');
+		    } else {
+		        $select_columns = array('*');
+		    }
+		}else{
+			if ($join_with_searchable_objects) {
+		        //$select_columns = array('DISTINCT(o.id),o.*,e.*');	
+		        $select_columns = array('o.*,e.*');
+		    }
+		}
+		
+		
+		$only_return_query_string = array_var($args, 'only_return_query_string');
 		
 		//template objects
 		$template_objects = (bool) array_var($args,'template_objects',false);
@@ -389,26 +512,37 @@ abstract class ContentDataObjects extends DataManager {
 	
 		if ($type_id){
 			// If isset type, is a concrete instance linsting. Otherwise is a generic listing of objects
-			$type = ObjectTypes::findById($type_id); /* @var $object_type ObjectType */
+			$type = ObjectTypes::instance()->findById($type_id); /* @var $object_type ObjectType */
 			$handler_class = $type->getHandlerClass();
 			$table_name = self::getTableName();
 			
+			if (!isset($args['join_ts_with_task'])) $args['join_ts_with_task'] = false;
+			$join_ts_with_task = $args['join_ts_with_task'];
+			
 	    	// Extra Join statements
-	    	if ($this instanceof ContentDataObjects && $this->object_type_name == 'timeslot') {
+	    	if ($this instanceof ContentDataObjects && $this->object_type_name == 'timeslot' && $join_ts_with_task) {
 	    		// if object is a timeslot and is related to a content object => check for members of the related content object.
 	    		$SQL_BASE_JOIN = " INNER JOIN  $table_name e ON IF(e.rel_object_id > 0, e.rel_object_id, e.object_id) = o.id ";
 	    		$SQL_TYPE_CONDITION = "o.object_type_id = IF(e.rel_object_id > 0, (SELECT z.object_type_id FROM ".TABLE_PREFIX."objects z WHERE z.id = e.rel_object_id), $type_id)";
 	    	} else {
 	    		$SQL_BASE_JOIN = " INNER JOIN  $table_name e ON e.object_id = o.id ";
-	    		$SQL_TYPE_CONDITION = "o.object_type_id = $type_id";
+	    		$SQL_TYPE_CONDITION = "true";// "o.object_type_id = $type_id"; // no need to add this clause, inner join is filtering
 	    	}
 			$SQL_EXTRA_JOINS = self::prepareJoinConditions(array_var($args,'join_params'));
 			
+		} else {
+			$type = null;
+			$handler_class = '';
+		}
+		
+		if ($join_with_searchable_objects) {
+			$SQL_SEARCHABLE_OBJ_JOIN = " INNER JOIN ".TABLE_PREFIX."searchable_objects so ON so.rel_object_id=o.id ";
+			$args['group_by'] = "o.id";
 		}
 		
 		if (!$ignore_context && !$member_ids) {
 			$members = active_context_members(false); // Context Members Ids
-		} elseif ( count($member_ids) ) {
+		} elseif ( is_array($member_ids) && count($member_ids) ) {
 			$members = $member_ids;
 		}
 		
@@ -419,7 +553,46 @@ abstract class ContentDataObjects extends DataManager {
 				$members = $extra_member_ids;
 			}
 		}
-		
+
+		// Specific order statements for dimension orders
+		if (is_numeric(array_var($args, 'dim_order')) && array_var($args, 'dim_order') > 0) {
+			$SQL_BASE_JOIN .= "
+				LEFT JOIN " . TABLE_PREFIX . "object_members obj_mems ON obj_mems.object_id=o.id AND obj_mems.is_optimization=0
+			";
+			$SQL_BASE_JOIN .= "
+				LEFT JOIN " . TABLE_PREFIX . "members memb ON obj_mems.member_id=memb.id AND memb.dimension_id=" . array_var($args, 'dim_order') . "
+			";
+			$select_columns = array("DISTINCT o.*", "e.*, GROUP_CONCAT(memb.display_name) as memb_name");
+			$args['group_by'] = "o.id";
+			$args['order'] = 'memb_name';
+			
+		} else if (is_numeric(array_var($args,'cp_order')) && array_var($args,'cp_order') > 0) {
+			// Specific order statements for custom property orders
+			
+			$SQL_BASE_JOIN .= " LEFT JOIN ".TABLE_PREFIX."custom_property_values cpropval ON cpropval.object_id=o.id 
+					AND (cpropval.custom_property_id=".array_var($args,'cp_order')." OR cpropval.custom_property_id IS NULL) ";
+			
+			$cp = CustomProperties::instance()->findById(array_var($args,'cp_order'));
+			if ($cp instanceof CustomProperty && ($cp->getType() == 'contact' || $cp->getType() == 'user')) {
+				
+				$SQL_BASE_JOIN .= " LEFT JOIN ".TABLE_PREFIX."objects cpobj ON cpobj.id=cpropval.value";
+				
+				$select_columns = array("DISTINCT o.*", "e.*, GROUP_CONCAT(cpobj.name) as cpobj_name");
+				$args['order'] = 'cpobj_name';
+				$args['group_by'] = "o.id";
+				
+			} else {
+				
+			    if ($cp instanceof CustomProperty && $cp->getType() == 'numeric'){			        
+			        $cp_concat_string = "CONVERT(cpropval.value, DOUBLE)";
+			    }else{
+			        $cp_concat_string = "cpropval.value";
+			    }
+			    $select_columns = array("DISTINCT o.*", "e.*, $cp_concat_string as cpropval_value");
+				$args['order'] = 'cpropval_value';
+				$args['group_by'] = "o.id";
+			}
+		}
 		// Order statement
     	$SQL_ORDER = self::prepareOrderConditions(array_var($args,'order'), array_var($args,'order_dir'));
 		
@@ -430,27 +603,42 @@ abstract class ContentDataObjects extends DataManager {
 			$SQL_LIMIT = '' ;
 		}
 		
-		// Prepare Group By SQL $group_by = array_var($args,'group_by');
-		if (array_var($args,'group_by')){
-			$SQL_GROUP_BY = "GROUP BY ".array_var($args,'group_by');
-		}else{
-			$SQL_GROUP_BY = '' ;
-		}
-		
 		$SQL_CONTEXT_CONDITION = " true ";
 		//show only objects that are on this members by classification not by hierarchy
 		$show_only_member_objects = array_var($args,'show_only_member_objects',false);
-		$exclusive_in_member = '';
-		if($show_only_member_objects){
-			$exclusive_in_member = " AND om.`is_optimization` = 0";
-		}
+		
 		if (!empty($members) && count($members)) {
-			$SQL_CONTEXT_CONDITION = "(EXISTS (SELECT om.object_id
-					FROM  ".TABLE_PREFIX."object_members om
-					WHERE	om.member_id IN (" . implode ( ',', $members ) . ") AND o.id = om.object_id $exclusive_in_member
-					GROUP BY object_id
-					HAVING count(member_id) = ".count($members)."
-			))";			
+			
+			//$SQL_BASE_JOIN .= " LEFT JOIN ".TABLE_PREFIX."object_members om ON om.object_id=o.id ";
+			$i = 0;
+			foreach ($members as $mem_id) {
+				$t_alias = 'om';
+				if ($i > 0) $t_alias .= $i;
+				$SQL_BASE_JOIN .= "
+					LEFT JOIN ".TABLE_PREFIX."object_members $t_alias USE INDEX (member_id) ON ${t_alias}.object_id=o.id AND ${t_alias}.member_id=$mem_id ";
+				$i++;
+				
+				$exclusive_in_member = '';
+				if($show_only_member_objects){
+					$exclusive_in_member = " AND ${t_alias}.`is_optimization` < 1";
+				}
+				
+				$SQL_CONTEXT_CONDITION .= ($SQL_CONTEXT_CONDITION == '' ? '' : " AND ");
+				$SQL_CONTEXT_CONDITION .= "${t_alias}.member_id = $mem_id $exclusive_in_member";
+			}
+			//$SQL_CONTEXT_CONDITION = "om.member_id IN (" . implode ( ',', $members ) . ") $exclusive_in_member";
+			
+			//Fixing: Undefined index
+			if (!isset($args['group_by'])) {
+				$args['group_by'] = "";
+			}
+		    /*if (trim($args['group_by']) != "") {
+		        $args['group_by'] .= ", ";
+		    }
+		    
+		    $args['group_by'] .= "om.object_id HAVING COUNT(DISTINCT(om.member_id)) = ".count($members);
+		    */
+
 		}else{
 			//show only objects that are on root
 			if($show_only_member_objects){				
@@ -471,6 +659,14 @@ abstract class ContentDataObjects extends DataManager {
 				}				
 			}
 		}
+
+
+		// Prepare Group By SQL $group_by = array_var($args,'group_by');
+		if (array_var($args,'group_by')){
+			$SQL_GROUP_BY = "GROUP BY ".array_var($args,'group_by');
+		}else{
+			$SQL_GROUP_BY = '' ;
+		}
 		
 		// Trash && Archived CONDITIONS
     	$trashed_archived_conditions = self::prepareTrashandArchivedConditions(array_var($args,'trashed'), array_var($args,'archived'));
@@ -484,42 +680,133 @@ abstract class ContentDataObjects extends DataManager {
 			$SQL_EXTRA_CONDITIONS = '';
 		}
 		
+		$SQL_EXTRA_CONDITIONS .= $text_filter_extra_conditions;
+		
 		$SQL_COLUMNS = implode(',', $select_columns);
+
+		//column to check permissions
+		if (isset($args['check_permissions_col'])){
+			$check_permissions_col = $args['check_permissions_col'];
+		}else{
+			$check_permissions_col = "o.id";
+		}
+		
+		$mail_ot_id = -1;
+		if (Plugins::instance()->isActivePlugin('mail')) {
+			$mail_ot = ObjectTypes::findByName('mail');
+			if ($mail_ot instanceof ObjectType) $mail_ot_id = $mail_ot->getId();
+		}
+		$report_ot_id = ObjectTypes::findByName('report')->getId();
 		
 		if (logged_user() instanceof Contact) {
 			$uid = logged_user()->getId();
 			// Build Main SQL
 			$logged_user_pgs = implode(',', logged_user()->getPermissionGroupIds());
 			
-			$permissions_condition = "o.id IN (
-					SELECT sh.object_id FROM ".TABLE_PREFIX."sharing_table sh
-					WHERE o.id = sh.object_id
-					AND sh.group_id  IN ($logged_user_pgs)
-			)";
-			
-			if (!$this instanceof MailContents && logged_user()->isAdministrator() || 
-					($this instanceof Contacts && $this->object_type_name == 'contact' && can_manage_contacts(logged_user()))) {
-				$permissions_condition = "true";
+			$permissions_condition = " true ";
+			if ($check_sharing_table && (!logged_user()->isAdministrator() || $type_id == $mail_ot_id)) {
+				if ($type_id == $mail_ot_id) {
+					if($is_email_widget){
+						$permissions_condition = "
+							e.account_id IN (
+								SELECT macc.account_id FROM ".TABLE_PREFIX."mail_account_contacts macc
+								WHERE macc.contact_id=$uid
+							)
+						";
+					} else {
+						$permissions_condition = "(
+							$check_permissions_col IN (
+								SELECT sh.object_id FROM ".TABLE_PREFIX."sharing_table sh
+								WHERE ".$check_permissions_col." = sh.object_id
+									AND sh.group_id  IN ($logged_user_pgs)
+								)
+							OR
+							e.account_id IN (
+								SELECT macc.account_id FROM ".TABLE_PREFIX."mail_account_contacts macc
+								WHERE macc.contact_id=$uid
+							)
+						) ";
+					}
+				} else if ($type_id == $report_ot_id) {
+					$permissions_condition = "(e.ignore_context=1 OR ".$check_permissions_col." IN (
+						SELECT sh.object_id FROM ".TABLE_PREFIX."sharing_table sh
+						WHERE ".$check_permissions_col." = sh.object_id
+						AND sh.group_id  IN ($logged_user_pgs))
+					) ";
+				} else {
+					$permissions_condition = $check_permissions_col." IN (
+						SELECT sh.object_id FROM ".TABLE_PREFIX."sharing_table sh
+						WHERE ".$check_permissions_col." = sh.object_id
+						AND sh.group_id  IN ($logged_user_pgs)
+					) ";
+				}
 			}
 			
-			if ($this instanceof ProjectFiles && logged_user()->isAdministrator() && Plugins::instance()->isActivePlugin('mail')) {
-				$permissions_condition = "IF(e.mail_id > 0,
-					  e.mail_id IN (
+			
+			/*
+			 * Check that the objects to list does not belong only to a non-manageable dimension that defines permissions
+			 * Object can be shown if:
+			 * 		1 - It belongs to at least a member in a dimension that defines permissions and is manageable
+			 * 		2 - Or it belongs to at least a member in a dimension that does not defines permissions
+			 * 		3 - Or user has permissions to read objects without classification 
+			 */
+		  if (!$type instanceof ObjectType || $type->getName() != 'mail') {
+			$without_perm_dim_ids = Dimensions::instance()->findAll(array('id' => true, 'conditions' => "defines_permissions=0"));
+			$no_perm_dims_cond = "";
+			$no_perm_reports_cond = "";
+			if ($type instanceof ObjectType && $type->getName() == 'report') {
+				$no_perm_reports_cond = " OR e.ignore_context=1";
+			}
+			
+			if (count($without_perm_dim_ids) > 0) {
+				$no_perm_dims_cond = " OR EXISTS (
+					select * from ".TABLE_PREFIX."object_members omems
+					  inner join ".TABLE_PREFIX."members mems on mems.id = omems.member_id
+					  WHERE omems.object_id=o.id AND mems.dimension_id IN (".implode(',', $without_perm_dim_ids).")
+				)";
+			}
+			
+			$permissions_condition .= " AND IF (o.object_type_id=".$mail_ot_id.", true, (
+				EXISTS (
+					SELECT cmp.permission_group_id FROM ".TABLE_PREFIX."contact_member_permissions cmp 
+					WHERE cmp.member_id=0 AND cmp.permission_group_id=".logged_user()->getPermissionGroupId()." AND cmp.object_type_id = o.object_type_id
+				)
+				OR
+				EXISTS (
+					select * from ".TABLE_PREFIX."object_members omems
+						inner join ".TABLE_PREFIX."members mems on mems.id = omems.member_id
+						inner join ".TABLE_PREFIX."dimensions dims on dims.id = mems.dimension_id
+					WHERE omems.object_id=o.id and dims.defines_permissions=1 and dims.is_manageable=1
+				) $no_perm_dims_cond $no_perm_reports_cond
+			))";
+		  }
+			/********************************************************************************************************/
+		  
+		    $contact_ot_id = ObjectTypes::findByName('contact')->getId();
+			if ($type_id != $mail_ot_id && logged_user()->isAdministrator() || 
+					($type_id == $contact_ot_id && can_manage_contacts(logged_user()))) {
+				$permissions_condition = "true";
+			}
+			/*
+			if ($this instanceof ProjectFiles && !logged_user()->isAdministrator() && Plugins::instance()->isActivePlugin('mail')) {
+				$permissions_condition .= ($permissions_condition=="" ? "" : " AND ") . "IF(e.mail_id > 0,
+					  o.id IN (
 										SELECT sh.object_id FROM ".TABLE_PREFIX."sharing_table sh
-										WHERE e.mail_id = sh.object_id
+										WHERE o.id = sh.object_id
 										AND sh.group_id  IN ($logged_user_pgs)
 					  ),
 					  true
 					)";
-			}
+			}*/
 			
 			if($template_objects){
 				$permissions_condition = "true";
 				$SQL_BASE_JOIN .= " INNER JOIN  ".TABLE_PREFIX."template_tasks temob ON temob.object_id = o.id ";
 			}
 			$sql = "
-				SELECT $SQL_FOUND_ROWS $SQL_COLUMNS FROM ".TABLE_PREFIX."objects o
+				SELECT $SQL_FOUND_ROWS $SQL_BEFORE_COLUMNS $SQL_COLUMNS FROM ".TABLE_PREFIX."objects o
 				$SQL_BASE_JOIN
+				$SQL_SEARCHABLE_OBJ_JOIN
 				$SQL_EXTRA_JOINS
 				WHERE
 					$permissions_condition
@@ -529,7 +816,7 @@ abstract class ContentDataObjects extends DataManager {
 				$SQL_GROUP_BY
 				$SQL_ORDER
 				$SQL_LIMIT";
-			
+						
 			if (isset($args['query_wraper_start'])){
 				$query_wraper_start = $args['query_wraper_start'];
 				$query_wraper_end = $args['query_wraper_end'];
@@ -539,49 +826,111 @@ abstract class ContentDataObjects extends DataManager {
 			$sql_total = "
 				SELECT count(o.id) as total FROM ".TABLE_PREFIX."objects o
 				$SQL_BASE_JOIN
+				$SQL_SEARCHABLE_OBJ_JOIN
 				$SQL_EXTRA_JOINS
 				WHERE
 					$permissions_condition
 					AND	$SQL_CONTEXT_CONDITION
 					AND $SQL_TYPE_CONDITION
-					AND $SQL_TRASHED_CONDITION $SQL_ARCHIVED_CONDITION $SQL_EXTRA_CONDITIONS
-				$SQL_GROUP_BY			
+					AND $SQL_TRASHED_CONDITION $SQL_ARCHIVED_CONDITION $SQL_EXTRA_CONDITIONS	
+					$SQL_GROUP_BY
 			";
+
+			if($SQL_GROUP_BY != ''){
+                $sql_total = "
+                  SELECT count(*) as total FROM (
+                  $sql_total
+                  ) as temptotal
+                ";
+            }
+			
+            //For debugging purposes:
+            //Logger::log_r("At ContentDataObject listing() function: listing. SQL is: \n". $sql . "\n");
+			
+			if ($only_return_query_string) {
+				return $sql;
+			}
 
 			
 		    if(!$only_count_results){
 				// Execute query and build the resultset
-		    	$rows = DB::executeAll($sql);
-		    	
-		    	if ($return_raw_data) {
-		    		$result->objects = $rows;
-		    	} else {
-		    		if($rows && is_array($rows)) {
-		    			foreach ($rows as $row) {
-		    				if ($handler_class) {
-		    					$phpCode = '$co = '.$handler_class.'::instance()->loadFromRow($row);';
-		    					eval($phpCode);
-		    				}
-		    				if ( $co ) {
-		    					$result->objects[] = $co;
-		    				}
-		    			}
-		    		}
-		    	}
-				if ($count_results) {
-					$total = DB::executeOne($sql_total);
-					$result->total = $total['total'];	
-				}else{
-					if  ( count($result->objects) >= $limit ) {
-						$result->total = 10000000;
+		    	if (!$only_query_totals_row) {
+			    	$rows = DB::executeAll($sql);
+
+					if ($return_raw_data) {
+			    		$result->objects = $rows;
+			    	} else {
+			    		if($rows && is_array($rows)) {
+
+			    			$manager_set = false;
+							if ($handler_class && class_exists($handler_class)) {
+								$manager = new $handler_class;
+								$manager_set = true;
+							}
+			    			
+			    			foreach ($rows as $row) {
+								$co = null;
+								if (!$manager_set) {
+									// if we dont have object type (example: when using general search) then get each object's manager from row
+									$man_ot = ObjectTypes::instance()->findById(array_var($row, 'object_type_id', 0));
+									if ($man_ot instanceof ObjectType) {
+										$handler_class = $man_ot->getHandlerClass();
+										if ($handler_class && class_exists($handler_class)) {
+											$manager = new $handler_class;
+										}
+									}
+								}
+								
+			    				if (isset($manager) && $manager instanceof DataManager) {
+			    					$co = $manager->loadFromRow($row);
+			    				}
+			    				if ( $co ) {
+			    					$result->objects[] = $co;
+			    				}
+			    			}
+			    		}
+			    	}
+					if ($count_results) {
+						$total = DB::executeOne($sql_total);
+						$result->total = $total['total'];	
 					}else{
-						$result->total = $start + count($result->objects);
+						if ( is_array($result->objects) && count($result->objects) >= $limit ) {
+							$result->total = 10000000;
+						}else{
+							$result->total = $start + (is_array($result->objects) ? count($result->objects) : 0);
+						}
+					}
+		    	}
+		    	
+				// additional data over result
+				$from_sql = "FROM ".TABLE_PREFIX."objects o";
+				$joins_sql = "$SQL_BASE_JOIN $SQL_SEARCHABLE_OBJ_JOIN $SQL_EXTRA_JOINS";
+				$all_conditions_sql = "
+					$permissions_condition
+					AND $SQL_CONTEXT_CONDITION
+					AND $SQL_TYPE_CONDITION
+					AND $SQL_TRASHED_CONDITION $SQL_ARCHIVED_CONDITION $SQL_EXTRA_CONDITIONS
+				";
+				$params = array('type_id' => $type_id, 'from_sql' => $from_sql, 'joins_sql' => $joins_sql, 'conditions_sql' => $all_conditions_sql,
+						'group_by' => $SQL_GROUP_BY, 'order' => array_var($args,'order'), 'order_dir' => array_var($args,'order_dir'),
+						'start' => $start, 'limit' => $limit, 'totalCount' => $result->total, 'member_ids' => $members);
+				
+				$more_data = null;
+				if ($fire_additional_data_hook) {
+					Hook::fire('object_listing_additional_data', $params, $more_data);
+				}
+				if ($more_data) {
+					foreach ($more_data as $key => $value) {
+						$result->$key = $value;
 					}
 				}
+				// ---------------------------
+				
 		    }else{
 		    	$total = DB::executeOne($sql_total);
 		    	$result->total = $total['total'];		    	
 		    }
+		    
 		} else {
 			$result->objects = array();
 			$result->total = 0;
@@ -592,16 +941,16 @@ abstract class ContentDataObjects extends DataManager {
 	
 	/**
 	 * @deprecated by listing(args) 
-	 * @param unknown_type $context
-	 * @param unknown_type $object_type
-	 * @param unknown_type $order
-	 * @param unknown_type $order_dir
-	 * @param unknown_type $extra_conditions
-	 * @param unknown_type $join_params
-	 * @param unknown_type $trashed
-	 * @param unknown_type $archived
-	 * @param unknown_type $start
-	 * @param unknown_type $limit
+	 * param unknown_type $context
+	 * param unknown_type $object_type
+	 * param unknown_type $order
+	 * param unknown_type $order_dir
+	 * param unknown_type $extra_conditions
+	 * param unknown_type $join_params
+	 * param unknown_type $trashed
+	 * param unknown_type $archived
+	 * param unknown_type $start
+	 * param unknown_type $limit
 	 */
 	static function getContentObjects($context, $object_type, $order=null, $order_dir=null, $extra_conditions=null, $join_params=null, $trashed=false, $archived=false, $start = 0 , $limit=null){
 		$table_name = $object_type->getTableName();
@@ -665,7 +1014,7 @@ abstract class ContentDataObjects extends DataManager {
 		    		if (str_ends_with($join_str, ",")) $join_str = substr($join_str, 0, strlen($join_str)-1);
 		    		$join_str .= ')';
 	    		}
-	    		$phpCode = '$objects = '.$handler_class.'::findAll(array("conditions" => "`e`.`object_id` IN ('.implode(',', $ids).')", "order" => "'.str_replace("ORDER BY ", "", $order_conditions).'"'.$join_str.'));';
+	    		$phpCode = '$objects = '.$handler_class.'::instance()->findAll(array("conditions" => "`e`.`object_id` IN ('.implode(',', $ids).')", "order" => "'.str_replace("ORDER BY ", "", $order_conditions).'"'.$join_str.'));';
 	    		eval($phpCode);
 	    	}
     	}
@@ -687,27 +1036,39 @@ abstract class ContentDataObjects extends DataManager {
     		}else{
     			$join_type = "INNER";
     		}
-	    	
-    		if (array_var($join_params, 'e_field')) {
+			
+			if(array_var($join_params, 'e_field') && array_var($join_params, 'get_object_data')){
+				$on_cond = "`o`.`".$join_params['e_field']."` = `jt`.`".$join_params['jt_field']."`";
+			} else if (array_var($join_params, 'e_field')) {
 	      		$on_cond = "`e`.`".$join_params['e_field']."` = `jt`.`".$join_params['jt_field']."`";
 	      		if (array_var($join_params, 'on_extra')) {
 	      			$on_cond = "`e`.`".$join_params['e_field']."` = `jt`.`".$join_params['jt_field']."` ".$join_params['on_extra'];
 	      		}
 	      	} else if (array_var($join_params, 'j_sub_q')) {
 	      		$on_cond = "`jt`.`".$join_params['jt_field']."` = (" . array_var($join_params, 'j_sub_q') . ")";
-	      	}
-    		$join_conditions = $join_type." JOIN `".$join_params['table']."` `jt` ON " . $on_cond;
-    	}
+			  }
+
+			$join_conditions = $join_type." JOIN `".$join_params['table']."` `jt` ON " . $on_cond;
+			
+		}
     	return $join_conditions;
     }
     
     
     static function prepareTrashAndArchivedConditions($trashed, $archived){
-        $trashed_cond = "`o`.`trashed_on` " .($trashed ? ">" : "="). " " . DB::escape(EMPTY_DATETIME);
+        $trashed_cond = "`o`.`trashed_on` " .($trashed ? ">" : "="). " 0";
     	if ($trashed) {
     		$archived_cond = "";
     	} else {
-    		$archived_cond = "AND `o`.`archived_on` " .($archived ? ">" : "="). " " . DB::escape(EMPTY_DATETIME);
+    		if ($archived == 'all') {
+    			$archived_cond = "";
+    		} else {
+    			if (!$archived || $archived == 'unarchived') {
+    				$archived_cond = "AND `o`.`archived_on` = 0";
+    			} else {
+    				$archived_cond = "AND `o`.`archived_on` > 0";
+    			}
+    		}
     	}
     	if ($trashed && Plugins::instance()->isActivePlugin('mail')) {
     		$mail_accounts = MailAccounts::getMailAccountsByUser(logged_user());
@@ -730,8 +1091,9 @@ abstract class ContentDataObjects extends DataManager {
     	$order_conditions = "";
     	if (is_null($order_dir)) $order_dir = "DESC";
     	if ($order && $order_dir){
-    		if (!is_array($order)) $order_conditions = "ORDER BY $order $order_dir";
-    		else {
+    		if (!is_array($order)){
+                $order_conditions = "ORDER BY $order $order_dir";
+            } else {
     			$i = 0;
     			foreach($order as $o){
     				switch ($o) {
@@ -741,13 +1103,23 @@ abstract class ContentDataObjects extends DataManager {
     					case 'dateArchived': $o = 'archived_on'; break;
     					default: break;
     				}
-    				if ($i==0)$order_conditions.= "ORDER BY $o $order_dir";
-    				else $order_conditions.= ", $o $order_dir";
-    				$i++;
+    				$dir = $order_dir;
+    				if (is_array($o)) {
+    					$dir = $o['dir'];
+    					$o = $o['col'];
+    				}
+    				
+    				if ($i==0)$order_conditions.= "ORDER BY $o $dir";
+    				else $order_conditions.= ", $o $dir";
+
+                    $i++;
     			}
     		}
+    	}else{
+            $order_conditions = "ORDER BY o.name ASC";
     	}
-    	return $order_conditions;
+
+        return $order_conditions;
     }
     
     static function prepareDimensionConditions($context, $object_type_id){
@@ -832,10 +1204,9 @@ abstract class ContentDataObjects extends DataManager {
     		return self::prepareAssociationConditions($redefined_context, $context_dimensions, $properties, $object_type_id, $pg_ids, $selection_members);
 	    }
     	
-    	$dimensions = Dimensions::findAll();
+    	$dimensions = Dimensions::instance()->findAll();
     	foreach ($dimensions as $dimension){
-    		if ($dimension->canContainObjects() && !in_array($dimension, $context) && !in_array($dimension, $selected_dimensions) &&
-    			!($dimension->getOptions(1) && isset($dimension->getOptions(1)->hidden) && $dimension->getOptions(1)->hidden)){
+    		if ($dimension->canContainObjects() && !in_array($dimension, $context) && !in_array($dimension, $selected_dimensions)){
     			$member_ids = array();
     			$all_members = $dimension->getAllMembers();
     			foreach($all_members as $member) {
@@ -852,14 +1223,14 @@ abstract class ContentDataObjects extends DataManager {
     /**
      * @deprecated
      * Enter description here ...
-     * @param unknown_type $dm_conditions
-     * @param unknown_type $dimension
-     * @param unknown_type $member_ids
-     * @param unknown_type $object_type_id
-     * @param unknown_type $pg_ids
-     * @param unknown_type $operator
-     * @param unknown_type $selection_members
-     * @param unknown_type $all
+     * param unknown_type $dm_conditions
+     * param unknown_type $dimension
+     * param unknown_type $member_ids
+     * param unknown_type $object_type_id
+     * param unknown_type $pg_ids
+     * param unknown_type $operator
+     * param unknown_type $selection_members
+     * param unknown_type $all
      */
     static function prepareQuery($dm_conditions, $dimension, $member_ids, $object_type_id, $pg_ids, $operator, $selection_members, $all = false){
     	$permission_conditions ="";
@@ -937,7 +1308,7 @@ abstract class ContentDataObjects extends DataManager {
 	    		else $member_ids = $member_intersection;
 	    		$association_conditions.= self::prepareQuery($association_conditions, $dimension, $member_ids,$object_type_id, $pg_ids, 'AND', $selection_members);
     	}
-    	$dims = Dimensions::findAll();
+    	$dims = Dimensions::instance()->findAll();
     	foreach ($dims as $dim){
     		if (!in_array($dim->getId(), $redefined_context) && !isset($properties[$dim->getId()]) && $dim->canContainObjects()){
     			$member_ids = array();
@@ -956,7 +1327,7 @@ abstract class ContentDataObjects extends DataManager {
     
     
     
-    function getExternalColumnValue($field, $id) {
+    function getExternalColumnValue($field, $id, $manager=null, $object=null) {
     	return "";
     }
     
@@ -973,8 +1344,12 @@ abstract class ContentDataObjects extends DataManager {
 				$objects_list[$i]->timeslots_count = 0;
 			}
 			if (count($ids > 0)){
+				$user_condition = "";
+				if(!SystemPermissions::userHasSystemPermission(logged_user(), 'can_see_others_timeslots')){
+					$user_condition = " AND contact_id = " . logged_user()->getId();
+				}
 				$result = Timeslots::instance()->listing(array(
-					"extra_conditions" => ' AND `e`.`object_id` in (' . implode(',', $ids) . ')'
+					"extra_conditions" => ' AND `e`.`object_id` in (' . implode(',', $ids) . ')'.$user_condition
 				));
 				$timeslots = $result->objects;
 				for ($i = 0; $i < count($timeslots); $i++){
@@ -1014,4 +1389,131 @@ abstract class ContentDataObjects extends DataManager {
 		
 		return $res;
 	}
+	
+	static function addObjToSharingTable($oid) {
+		SharingTables::instance()->fill_sharing_table_by_object($oid);
+	}
+
+	function getColumnsToAggregateInTotals() {
+		$columns = array();
+		Hook::fire('more_columns_to_aggregate_in_totals', $this, $columns);
+		return $columns;
+	}
+	
+	
+	function getCalculatedColumns() {
+		$columns = array();
+		Hook::fire('more_object_calculated_columns', $this, $columns);
+		return $columns;
+	}
+	
+	
+	function getDefinition($ot_id = null) {
+	    $columns = $this->getColumns();
+	    $object_columns = Objects::instance()->getColumns();
+	    $columns = array_merge($columns,$object_columns);
+	    
+	    if (is_null($ot_id)) {
+	    	$ot_id = $this->getObjectTypeId();
+	    }
+	    
+	    $cps = CustomProperties::getAllCustomPropertiesByObjectType($ot_id);
+	    
+	    $array_cp_info = array();
+	    foreach($cps as $cp){
+	    	$cp_info = array(
+	        		'id' => $cp->getId(),
+	        		'type' => $cp->getType(),
+	        		'label' => $cp->getName(),
+	        		'code' => $cp->getCode(),
+	        );
+	    	if ($cp->getType() == 'list') {
+	    		$list_values = explode(',', $cp->getValues());
+	    		
+	    		$list_value_labels = array();
+	    		foreach ($list_values as $list_value) {
+	    			$lang_value = Localization::instance()->lang($list_value);
+	    			if (is_null($lang_value)) {
+	    				$exp = explode('@', $cp_list_value);
+	    				if (count($exp) == 2) {
+	    					$lang_value = Localization::instance()->lang($exp[1]);
+	    					if (is_null($lang_value)) {
+	    						$lang_value = $exp[1];
+	    					}
+	    				} else {
+	    					$lang_value = $list_value;
+	    				}
+	    			}
+	    			$list_value_labels[$list_value] = $lang_value;
+	    		}
+
+	    		$cp_info['list_values'] = $list_value_labels;
+	    	}
+	        $array_cp_info["cp_".$cp->getId()] = $cp_info;
+	    }
+
+	    $result = array();
+	    $system_columns = $this->getSystemColumns();
+	    
+	    foreach ($columns as $c){
+	        if (!in_array($c, $system_columns)){
+	            $result[$c]= array( 'id'=>$c, 'type' => $this->getColumnType($c), 'label'=>lang( 'field '.get_class($this).' '.$c ));
+	        }	        
+	    }
+	    
+	    $associated_obj_columns = $this->getAssociatedObjectsFixedColumns();
+	    foreach ($associated_obj_columns as $key_col => $col_infos) {
+		    foreach ($col_infos as $col) {
+		    	$result[$col['col']]= array('id'=>$col['col'], 'type'=>$col['type'], 'label'=>$col['label']);
+		    }
+	    }
+	    
+	    $result = array_merge($result,$array_cp_info);
+	    return $result;
+	}
+	
+	
+	function getAdditionalCustomProperties() {
+		return array();
+	}
+	
+	function getAssociatedObjectsFixedColumns() {
+		return array();
+	}
+	
+	function getAssociatedObjectManagers() {
+		return array();
+	}
+	
+	
+	static function generateOldContentObjectData(ContentDataObject $object) {
+
+		$old_content_object = $object->manager()->findById($object->getId(), true);
+		if (!$old_content_object instanceof ContentDataObject) {
+			$object_class = $object->manager()->getItemClass();
+			$old_content_object = new $object_class;
+		}
+		if ($object instanceof Contact && $object->isUser()) {
+			$old_content_object->member_ids = $object->getMemberIdsOfNonPermissionDimensions();
+		} else {
+			$old_content_object->member_ids = $object->getMemberIds();
+		}
+		$old_content_object->linked_object_ids = $object->getAllLinkedObjectIds();
+		$old_content_object->subscriber_ids = $object->getSubscriberIds();
+		
+		$cps = CustomProperties::getAllCustomPropertiesByObjectType($object->getObjectTypeId());
+		
+		$cp_values = array();
+		foreach ($cps as $cp) {
+			$cpval = CustomPropertyValues::instance()->getCustomPropertyValue($object->getId(), $cp->getId());
+			$cp_values[$cp->getId()] = $cpval instanceof CustomPropertyValue ? $cpval->getValue() : '';
+		}
+		$old_content_object->custom_properties = $cp_values;
+
+		Hook::fire('generate_old_content_object_more_data', array('object' => $object), $old_content_object);
+		
+		return $old_content_object;
+
+	}
+	
 }

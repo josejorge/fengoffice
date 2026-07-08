@@ -17,7 +17,7 @@
 		foreach ( $object_types as $ot ) {
 		
 			$checked = array_search($ot->getId(), $value) !== false;
-			$out .= '<div style="float:left; margin-right: 15px; min-width: 130px;">';
+			$out .= '<div  class="checkbox-config-option">';
 			$out .= label_tag(lang($ot->getName()), $genid.'_'.$control_name.'_'.$ot->getId(), false, array('style' => 'cursor:pointer;'), '');
 			$out .= checkbox_field($control_name . '[' . $ot->getId () . ']', $checked, array('id' => $genid.'_'.$control_name.'_'.$ot->getId()));
 			$out .= '</div >';

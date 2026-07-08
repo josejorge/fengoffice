@@ -35,21 +35,27 @@
   	
   	
   	static function getTypeId($type){
-  		$webpage_type = WebpageTypes::findOne(array('conditions' => array("`name` = ?",$type)));
+  		$webpage_type = WebpageTypes::instance()->findOne(array('conditions' => array("`name` = ?",$type)));
   		if (!is_null($webpage_type)) return $webpage_type->getId();
   		else return null;
     }
 
 
-    static function getAllWebpageTypesInfo() {
-    	$types = WebpageTypes::findAll();
-    	$result = array();
-    	foreach ($types as $type) {
-    		$result[] = array('id' => $type->getId(), 'code' => $type->getName(), 'name' => lang($type->getName()));
-    	}
-    
-    	return $result;
+    static function getAllWebpageTypesInfo($use_id_as_key = false) {
+      $types = WebpageTypes::instance()->findAll();
+      $result = array();
+      foreach ($types as $type) {
+          if ($use_id_as_key){
+              $result[$type->getId()] = array('id' => $type->getId(), 'code' => $type->getName(), 'name' => lang($type->getName()));
+          }else{
+            $result[] = array('id' => $type->getId(), 'code' => $type->getName(), 'name' => lang($type->getName()));
+          }
+      }
+
+      return $result;
     }
-  } // WebpageTypes 
+
+
+  } // WebpageTypes
 
 ?>

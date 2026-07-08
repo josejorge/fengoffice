@@ -135,7 +135,6 @@ th, td {
 }
 
 th {
-  background: #e8e8e8;
   padding: 2px 5px;
 }
 
@@ -361,7 +360,8 @@ a.iCalSubscribe {
 }
 
 .dimension-selector-container .dimension-panel-textfilter.ico-search-m.search-filter {
-	height: 20px!important;
+  height: 20px !important;
+  /*margin-bottom: 10px;*/
 }
 #object-picker .dimension-selector-container .dimension-panel-textfilter.ico-search-m.search-filter {
 	text-overflow: ellipsis;

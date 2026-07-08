@@ -118,7 +118,7 @@
 		$is_alt = false;
 		foreach ($members as $member) {/* @var $member Member */
 			if(!is_null($log_data[$member->getId()]['created_by_id'])){
-				$created_by = Contacts::findById($log_data[$member->getId()]['created_by_id']);
+				$created_by = Contacts::instance()->findById($log_data[$member->getId()]['created_by_id']);
 				$created_by_name = $created_by instanceof Contact ? clean($created_by->getObjectName()) : lang('n/a');
 				$created_on = DateTimeValueLib::dateFromFormatAndString(DATE_MYSQL, $log_data[$member->getId()]['created_on']);
 			}
@@ -132,13 +132,15 @@
 						$crumb_members = array(
 							$p->getId() => array('name' => $p->getName(), 'ot' => $p->getObjectTypeId(), 'c' => $p->getColor()),
 						);
-						$crumbOptions = json_encode(array($member->getDimensionId() => $crumb_members));
-						$crumbJs = " og.getCrumbHtml($crumbOptions, null, null, null, 13)";
+						$crumbOptions = json_encode(array($member->getDimensionId() => $crumb_members));						
 					?>
 					<span class="breadcrumb"></span>
 					<script>
-						var crumbHtml = <?php echo $crumbJs?>;
-						$("#member-<?php echo $member->getId()?> .breadcrumb").html(crumbHtml);
+					var crumbHtml = "<div class='breadcrumb-container' style='display: inline-block;min-width: 250px;'>";
+					crumbHtml += og.getEmptyCrumbHtml(<?php echo $crumbOptions?>, '.breadcrumb-container', og.breadcrumbs_skipped_dimensions);
+					crumbHtml += "</div>";
+
+					$("#member-<?php echo $member->getId()?> .breadcrumb").html(crumbHtml);
 					</script>
 			<?php 	} ?>
 				</div>
@@ -151,7 +153,7 @@
 			?>
 				<div class="member-actions"><a class="db-ico ico-edit" href="<?php echo $edit_url?>"><?php echo lang('edit')?></a></div>
 		  <?php if(!is_null($log_data[$member->getId()]['created_by_id'])){ ?>
-				<div class="desc member-log"><?php echo lang('created by on', $created_by->getCardUrl(), $created_by_name, format_date($created_on))?></div>
+				<div class="desc member-log"><?php echo lang('created by on', ($created_by instanceof Contact ? $created_by->getCardUrl() : ''), $created_by_name, format_date($created_on))?></div>
 				<?php } ?>
 				<div class="clear"></div>
 			</div>
@@ -257,5 +259,7 @@ $(function() {
 		items_x_page = $(this).val();
 		og.call_dimension_list_members(1);
 	});
+
+	og.eventManager.fireEvent('replace all empty breadcrumb', null);
 });
 </script>

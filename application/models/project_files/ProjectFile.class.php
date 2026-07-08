@@ -80,7 +80,7 @@ class ProjectFile extends BaseProjectFile {
 		
 		if(!isset($conditions)) $conditions = DB::prepareString("`file_id` = ? AND `trashed_on` = '0000-00-00 00:00:00'", array($this->getId()));
 		
-		return ProjectFileRevisions::find(array(
+		return ProjectFileRevisions::instance()->find(array(
 	        'conditions' => $conditions,
 	        'order' => '`created_on` ' . $dir
         )); // find
@@ -93,7 +93,7 @@ class ProjectFile extends BaseProjectFile {
 	 * @return integer
 	 */
 	function countRevisions() {
-		return ProjectFileRevisions::count(array(
+		return ProjectFileRevisions::instance()->count(array(
         '`file_id` = ?', $this->getId()
 		)); // count
 	} // countRevisions
@@ -117,7 +117,7 @@ class ProjectFile extends BaseProjectFile {
 	 */
 	function getLastRevision() {
 		if(is_null($this->last_revision)) {
-			$this->last_revision = ProjectFileRevisions::findOne(array(
+			$this->last_revision = ProjectFileRevisions::instance()->findOne(array(
 	          'conditions' => array('`file_id` = ? and `trashed_by_id`=0', $this->getId()),
 			  'order' => '`created_on` DESC',
 	          'limit' => 1,
@@ -216,7 +216,7 @@ class ProjectFile extends BaseProjectFile {
 	 */
 	function getCheckedOutBy() {
 		if(is_null($this->checked_out_by)) {
-			if($this->columnExists('checked_out_by_id')) $this->checked_out_by = Contacts::findById($this->getCheckedOutById());
+			if($this->columnExists('checked_out_by_id')) $this->checked_out_by = Contacts::instance()->findById($this->getCheckedOutById());
 		} //
 		return $this->checked_out_by;
 	} // getCreatedBy
@@ -562,8 +562,9 @@ class ProjectFile extends BaseProjectFile {
 	 */
 	function getDownloadUrl() {
 		return get_url('files', 'download_file', array(
-        'id' => $this->getId())
-		); // get_url
+        	'id' => $this->getId(), // file id
+			'mod' => gen_id(), // don't cache
+		)); // get_url
 	} // getDownloadUrl
 
 	
@@ -650,7 +651,7 @@ class ProjectFile extends BaseProjectFile {
 	//  Permissions
 	// ---------------------------------------------------
 
-	function canAdd(Contact $user, $context,&$notAllowedMember = ''){
+	static function canAdd(Contact $user, $context,&$notAllowedMember = ''){
 		return can_add($user, $context, ProjectFiles::instance()->getObjectTypeId(),$notAllowedMember);
 	}
 
@@ -736,16 +737,18 @@ class ProjectFile extends BaseProjectFile {
 	 * @param array $error
 	 * @return null
 	 */
-	function validate(&$errors) {
+	function validate($errors) {
 		$extension = get_file_extension(basename($this->getFilename()));
-		if(!$this->validatePresenceOf('name') || ($this->getFilename() == ".".$extension)) {
+		$known_type = FileTypes::getByExtension($extension);
+		
+		if(!$this->validatePresenceOf('name') || ($this->getFilename() == ".".$extension && $known_type instanceof FileType)) {
 			$errors[] = lang('filename required');
 		}
 		if ($this->getType() != ProjectFiles::TYPE_DOCUMENT){
 			if(!$this->validatePresenceOf('url') || $this->getUrl() == 'http://') {
-					$errors[] = lang('weblink required');
-				} // if				
-			}
+				$errors[] = lang('weblink required');
+			} // if				
+		}
 	} // validate
 	
 	/**
@@ -854,6 +857,7 @@ class ProjectFile extends BaseProjectFile {
 			$d = $m->getDimension();
 			if ($d instanceof Dimension && $d->getIsManageable()) $member_ids[] = $m->getId();
 		}
+		
 		if ($this->getMailId() == 0 || count($member_ids) > 0) {
 			$revisions = $this->getRevisions();
 			if (is_array($revisions)) {
@@ -864,16 +868,25 @@ class ProjectFile extends BaseProjectFile {
 			parent::addToSharingTable();
 		} else {
 			// if not classified and belongs to an email
-			$mail = MailContents::findById($this->getMailId());
+			$mail = MailContents::instance()->findById($this->getMailId());
 			if ($mail instanceof MailContent) {
 				DB::execute("DELETE FROM ".TABLE_PREFIX."sharing_table WHERE object_id=".$this->getId());
 				
-				$macs = MailAccountContacts::findAll(array('conditions' => array('`account_id` = ?', $mail->getAccountId())));
+				$macs = MailAccountContacts::instance()->findAll(array('conditions' => array('`account_id` = ?', $mail->getAccountId())));
 				foreach ($macs as $mac) {
-					$c = Contacts::findById($mac->getContactId());
+					$c = Contacts::instance()->findById($mac->getContactId());
 					if ($c instanceof Contact) {
 						$values = "(".$c->getPermissionGroupId().",".$this->getId().")";
-						DB::execute("INSERT INTO ".TABLE_PREFIX."sharing_table (group_id, object_id) VALUES $values ON DUPLICATE KEY UPDATE group_id=group_id;");
+						$sql = "INSERT INTO ".TABLE_PREFIX."sharing_table (group_id, object_id) VALUES $values ON DUPLICATE KEY UPDATE group_id=group_id;";
+						
+						if (count($member_ids) > 0) {
+							DB::execute($sql);
+						} else {
+							$cmp = ContactMemberPermissions::instance()->findOne(array('conditions' => "member_id=0 AND object_type_id=".$this->getObjectTypeId()." AND permission_group_id=".$c->getPermissionGroupId()));
+							if ($cmp instanceof ContactMemberPermission) {
+								DB::execute($sql);
+							}
+						}
 					}
 				}
 			}

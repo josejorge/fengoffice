@@ -22,7 +22,7 @@ class  ContactMemberCacheController extends ApplicationController {
 			}
 		}else{
 			// dimension
-			$dimensions = Dimensions::findAll();
+			$dimensions = Dimensions::instance()->findAll();
 			$contact_pg_ids = $group->getId();
 			
 			//get all allowed members for the group
@@ -32,11 +32,13 @@ class  ContactMemberCacheController extends ApplicationController {
 				if ($dimension->getDefinesPermissions()) {
 					$member_list = DB::executeAll("SELECT * FROM ".TABLE_PREFIX."members WHERE dimension_id = ".$dimension->getId()." ORDER BY id");
 				}
-				foreach ($member_list as $dim_member){
-					if (ContactMemberPermissions::instance()->contactCanAccessMemberAll($contact_pg_ids, $dim_member['id'], $user, ACCESS_LEVEL_READ, false)) {
-						$allowed_members[] = $dim_member['id'];
+				if (is_array($member_list)) {
+					foreach ($member_list as $dim_member){
+						if (ContactMemberPermissions::instance()->contactCanAccessMemberAll($contact_pg_ids, $dim_member['id'], $user, ACCESS_LEVEL_READ, false)) {
+							$allowed_members[] = $dim_member['id'];
+						}
 					}
-				}				
+				}
 			}
 			$membersIds = $allowed_members;
 		}
@@ -65,7 +67,7 @@ class  ContactMemberCacheController extends ApplicationController {
 		if(count($permissionGroupIds) > 0){	
 			$usersIds = ContactPermissionGroups::getAllContactsIdsByPermissionGroupIds($permissionGroupIds);
 			foreach ($usersIds as $us_id) {
-				$user = Contacts::findById($us_id);
+				$user = Contacts::instance()->findById($us_id);
 				ContactMemberCaches::updateContactMemberCache($user, $member->getId());
 			}
 			

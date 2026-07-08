@@ -1,6 +1,8 @@
 og.templateParameters = [];
 og.templateObjects = [];
 
+if (!og.templates) og.templates = { datetypes: ['date'] };
+
 og.loadTemplateVars = function(){
 	og.templateParameters = [];
 	og.templateObjects = [];
@@ -112,6 +114,61 @@ og.toggleTemplateSubtasks = function(taskId){
 	}
 }
 */
+
+
+og.askUserToFixRepetitiveTemplateTasks = function(data) {
+	var template_id = data.template_id;
+	var tasks = data.tasks;
+
+	
+	var info = lang('warning you have added some repetitive tasks for this template that do not have date variables for their date');
+
+	var tasks_list_html = '<br /><div class="bold">'+lang('tasks')+':</div><ul>';
+	for (var i=0; i<tasks.length; i++) {
+		var t = tasks[i];
+		if (!t) continue;
+		tasks_list_html += '<li><span class="link-ico ico-task">'+ t.name +'</span></li>';
+	}
+	tasks_list_html += '</ul>';
+	
+	var div = document.createElement('div');
+	div.style = "border-radius: 5px; background-color: #fff; padding: 10px; width: 500px;";
+	var genid = Ext.id();
+	
+	div.innerHTML = '<div><label class="coInputTitle">'+lang('fix repetitive tasks')+'</label></div>'+
+		'<div id="'+genid+'_question">'+ info + '<br />' + tasks_list_html + '</div>'+
+		'<div id="'+genid+'_buttons">'+
+		'<button class="yes submit blue" style="width:100%;">'+lang('yes let me add those variables')+'</button>'+
+		'<button class="no submit blue" style="width:100%;">'+lang('no time now remove repetition')+'</button>'+
+		'</div><div class="clear"></div>';
+
+	var modal_params = {
+		'escClose': false,
+		'overlayClose': false,
+		'closeHTML': '<a id="'+genid+'_close_link" class="modal-close" title="'+lang('close')+'" style="display:none;"></a>',
+		'onShow': function (dialog) {
+			$("#"+genid+"_close_link").addClass("modal-close-img");
+			$("#"+genid+"_buttons").css('text-align', 'right').css('margin', '10px 0');
+			$("#"+genid+"_question").css('margin', '10px 0');
+			$("#"+genid+"_buttons button.yes").css('margin-right', '10px').click(function(){
+				Ext.getCmp('tabs-panel').getActiveTab().back();
+				og.openLink(og.getUrl('template', 'edit', {id:template_id}), {});
+				$('.modal-close').click();
+			});
+			$("#"+genid+"_buttons button.no").css('margin-right', '10px').click(function(){
+				og.openLink(og.getUrl('template', 'remove_repetition_from_inconsistent_template_tasks'), {post: {
+					template_id: template_id
+				}});
+				$('.modal-close').click();
+			});
+	    }
+	};
+	setTimeout(function() {
+		$.modal(div, modal_params);
+	}, 100);
+	
+}
+
 og.addObjectToTemplate = function(target, obj, dont_draw_milestone_combo) {
 	target = $('#'+target);
 	
@@ -128,16 +185,16 @@ og.addObjectToTemplate = function(target, obj, dont_draw_milestone_combo) {
 		'<div style="float: left;" class="db-ico '+obj.ico+'"></div>' +
 		'<div class="template-text-ellipsis">' +
 			'<a id="template-object-name' + obj.object_id + '" href="#" class="internalLink" onclick="og.viewTempObj('+obj.object_id+',  \''+obj.type+'\')">'+og.clean(obj.name)+'</a>' +
+			(parseInt(obj.is_repetitive) > 0 ? '&nbsp;<span class="link-ico ico-recurrent"></span>' : '') +
 		'</div>';
-			
 	var divActions = document.createElement('div');
 	divActions.className = "template-object-actions";
 
 	var divhtml =
-		'<a id="toggleTemplatePropertys'+obj.object_id+'" href="#" onclick="og.toggleTemplatePropertys('+obj.object_id+')" class="toggle_collapsed">'+ lang("edit variables") + '</a>'+
+		'<a id="toggleTemplateProperties'+obj.object_id+'" href="#" onclick="og.toggleTemplateProperties('+obj.object_id+')" class="toggle_collapsed">'+ lang("edit variables") + '</a>'+
 		"<a href='#' class='internalLink coViewAction ico-edit' onclick='"+"og.editTempObj("+obj.object_id+", \""+obj.type+"\")"+"'>" + lang('edit') + '</a>';
 	if (obj.type == 'template_task') {
-		divhtml += '<a href="#" onclick="og.openLink(og.getUrl(\'task\', \'add_task\', {template_task:1, parent_id:'+ obj.object_id +', template_id:'+og.actual_template_id+'}), {caller:\'new_task_template\'})" class="internalLink ico-add coViewAction">'+lang("add sub task")+'</a>';
+		divhtml += '<a href="#" onclick="og.render_modal_form(\'\', {c:\'task\', a:\'add_task\', params:{template_task:1, parent_id:'+ obj.object_id +', template_id:'+og.actual_template_id+'}})" class="internalLink ico-add coViewAction">'+lang("add sub task")+'</a>';
 	} else if (obj.type == 'template_milestone') {
 		divhtml += '<a href="#" onclick="og.openLink(og.getUrl(\'task\', \'add_task\', {template_task:1, milestone_id:'+ obj.object_id +', template_id:'+og.actual_template_id+'}), {caller:\'new_task_template\'})" class="internalLink ico-add coViewAction">'+lang("add task")+'</a>';
 	}
@@ -232,10 +289,10 @@ og.toggleTemplateSubtasks = function(object_id){
 	
 }
 
-og.toggleTemplatePropertys = function(object_id){
+og.toggleTemplateProperties = function(object_id){
 	$('[id^=propertyDiv' + object_id +']').toggle();
-	$('[id^=toggleTemplatePropertys' + object_id +'] a').toggleClass('toggle_collapsed');
-	$('[id^=toggleTemplatePropertys' + object_id +'] ').toggleClass('toggle_expanded');		
+	$('[id^=toggleTemplateProperties' + object_id +'] a').toggleClass('toggle_collapsed');
+	$('[id^=toggleTemplateProperties' + object_id +'] ').toggleClass('toggle_expanded');		
 }
 
 og.removeObjectFromTemplate = function(div, obj_id) {
@@ -321,7 +378,7 @@ og.templateObjectMouseOut = function() {
 	}
 };
 
-og.addTemplateObjectProperty = function(obj_id, count, property, value){
+og.addTemplateObjectProperty = function(obj_id, count, property, value, object_type_id){
 	var propDiv = document.getElementById('propDiv' + count);
 	var parent = propDiv.parentNode;
 	var selects = parent.getElementsByTagName('select');
@@ -351,34 +408,53 @@ og.addTemplateObjectProperty = function(obj_id, count, property, value){
 	newProp.innerHTML += html;
 	propDiv.parentNode.insertBefore(newProp, propDiv);
 
-	// FIXME: obtener obj_type para hacer el request
-	og.openLink(og.getUrl('template', 'get_object_properties', {id: obj_id}), {
-		callback: function(success, data) {
-			if (success) {
-				var propSelection = '';
-				if(data.properties.length > 0){
-					var select = document.getElementById('objectProperties[' + obj_id + '][' + total + ']');
-					select.innerHTML = "";
-					var option = document.createElement('option');
-					option.value = "";
-					option.innerHTML = '-- ' + lang('select') + ' --';
-					select.appendChild(option);
-					for(var j=0; j < data.properties.length; j++){
-						var prop = data.properties[j];
-						option = document.createElement('option');
-						option.className = prop.type;
-						option.value = prop.id;
-						if (prop.id == property) option.selected = "selected";
-						option.innerHTML = prop.name;
-						select.appendChild(option);
-					}
-					select.style.display = '';
-					og.objectPropertyChanged(obj_id, total, value);
+	og.requestAndRenderTemplateObjectPropertySelector(obj_id, total, value, property, object_type_id);
+	
+};
+
+
+og.requestAndRenderTemplateObjectPropertySelector = function(obj_id, total, value, property, object_type_id) {
+	// if properties already loaded then render the component directly
+	if (object_type_id && og.template_obj_properties && og.template_obj_properties[object_type_id]) {
+		
+		og.renderTemplateObjectPropertySelector(obj_id, og.template_obj_properties[object_type_id], total, property, value, object_type_id);
+		
+	} else {
+		// request the properties and render the component directly
+		og.openLink(og.getUrl('template', 'get_object_properties', {id: obj_id}), {
+			callback: function(success, data) {
+				if (success) {
+					og.renderTemplateObjectPropertySelector(obj_id, data, total, property, value);
 				}
 			}
+		});
+	}
+}
+
+// render the component for the property
+og.renderTemplateObjectPropertySelector = function(obj_id, data, total, property, value) {
+	var propSelection = '';
+	if(data.properties.length > 0){
+		var select = document.getElementById('objectProperties[' + obj_id + '][' + total + ']');
+		select.innerHTML = "";
+		var option = document.createElement('option');
+		option.value = "";
+		option.innerHTML = '-- ' + lang('select') + ' --';
+		select.appendChild(option);
+		for(var j=0; j < data.properties.length; j++){
+			var prop = data.properties[j];
+			option = document.createElement('option');
+			option.className = prop.type;
+			option.value = prop.id;
+			if (prop.id == property) option.selected = "selected";
+			option.innerHTML = prop.name;
+			select.appendChild(option);
 		}
-	});
-};
+		select.style.display = '';
+		og.objectPropertyChanged(obj_id, total, value);
+	}
+}
+
 
 og.deleteTemplateObjectProperty = function(obj_id, count){
 	var propDiv = document.getElementById('propDiv[' + obj_id + '][' + count + ']');
@@ -425,9 +501,12 @@ og.objectPropertyChanged = function(obj_id, count, value){
 		var prop = propertySel[selectedPropIndex];
 		var propValueTD = document.getElementById('propSel[' + obj_id + '][' + count + ']');
 		var datePropTD = document.getElementById('datePropTD[' + obj_id + '][' + count + ']');
-		if(datePropTD != null){
-			datePropTD.innerHTML = '';
-		}
+		if (datePropTD != null) datePropTD.innerHTML = '';
+		var numericPropTD = document.getElementById('numericPropTD[' + obj_id + '][' + count + ']');
+		if (numericPropTD != null) numericPropTD.innerHTML = '';
+		var timePropTD = document.getElementById('timePropTD[' + obj_id + '][' + count + ']');
+		if (timePropTD != null) timePropTD.innerHTML = '';
+		
 		var id = 0;
 		var propSel = document.getElementById('objectProperties[' + obj_id + '][' + id + ']');
 		while(propSel != null){
@@ -448,26 +527,26 @@ og.objectPropertyChanged = function(obj_id, count, value){
 			
 			var newTD = document.createElement('td');
 			newTD.id = 'datePropTD[' + obj_id + '][' + count + ']';
-			//newTD.style.paddingLeft = '10px';
+			
 			propValueTD.parentNode.appendChild(newTD);
 			if(value != ''){
+				
+				var time_value = '';
+				var splitted_value = value.split("|");
+				value = splitted_value[0];
+				if (splitted_value[1]) time_value = splitted_value[1];
+				
 				var datePropTypeSel = document.getElementById('datePropType[' + obj_id + '][' + count + ']');
 				if(value.indexOf("+") != -1 || value.indexOf("-") != -1){
 					var param = "";
-					var operator = "+";
-					var posOp = 0;
-					if(value.indexOf("+") != -1){
-						posOp = value.indexOf("+");
-					}
-					if (value.indexOf("-") != -1){
-						posOp = value.indexOf("-");
-						operator = "-";
-					}
+					var posOp = value.indexOf("}") + 1;
+					var operator = value.substring(posOp, posOp + 1);
+					
 					param = value.substring(0, posOp);
 					amount = value.substring(posOp + 1, value.length - 1);
 					unit = value.substring(value.length - 1);
 					datePropTypeSel.selectedIndex = 2;
-					og.datePropertyTypeSel(count, obj_id);
+					og.datePropertyTypeSel(count, obj_id, time_value, param);
 					var paramSel = document.getElementById('propValueParam[' + obj_id + '][' + prop.value + ']');
 					for(var i=0; i < paramSel.length; i++){
 						var paramName = '{' + paramSel.options[i].value + '}';
@@ -483,8 +562,16 @@ og.objectPropertyChanged = function(obj_id, count, value){
 							opSel.selectedIndex = i;
 						}
 					}
-					var amountInput = document.getElementById('propValueAmount[' + obj_id + '][' + prop.value + ']');
-					amountInput.value = amount;
+
+					if (og.override_template_date_amount_input_init && typeof(og.override_template_date_amount_input_init) == 'function') {
+
+						og.override_template_date_amount_input_init.call(null, obj_id, prop, amount);
+
+					} else {
+						var amountInput = document.getElementById('propValueAmount[' + obj_id + '][' + prop.value + ']');
+						amountInput.value = amount;
+					}
+
 					var unitSel = document.getElementById('propValueUnit[' + obj_id + '][' + prop.value + ']');
 					for(i=0; i < unitSel.length; i++){
 						var u = unitSel.options[i].value;
@@ -533,13 +620,36 @@ og.objectPropertyChanged = function(obj_id, count, value){
 					});
 				}
 			}
+		} else if (prop.className == 'INTEGER' || prop.className == 'FLOAT') {
+			
+			var newTD = document.createElement('td');
+			newTD.id = 'numericPropTD[' + obj_id + '][' + count + ']';
+			
+			propValueTD.parentNode.appendChild(newTD);
+
+			og.numericPropertyTypeSel(count, obj_id, value);
+
+		} else if (prop.className == 'TIME') {
+			
+			var newTD = document.createElement('td');
+			newTD.id = 'timePropTD[' + obj_id + '][' + count + ']';
+			
+			propValueTD.parentNode.appendChild(newTD);
+
+			og.timePropertyTypeSel(count, obj_id, value);
+
 		}else{
 			propValueTD.innerHTML = '';
 		}
 	}
 };
 
-og.datePropertyTypeSel = function(count, obj_id){
+og.datePropertyTypeSelOnChange = function(input, obj_id, prop) {
+	var display = $(input).val() == 'task_creation' ? '' : 'none';
+	//$('#prop_value_time_container_'+ obj_id +'_'+ prop).css('display', display);
+}
+
+og.datePropertyTypeSel = function(count, obj_id, value_time, sel_param){
 	
 	var datePropTD = document.getElementById('datePropTD[' + obj_id + '][' + count + ']');
 	var datePropTypeSel = document.getElementById('datePropType[' + obj_id + '][' + count + ']');
@@ -558,33 +668,219 @@ og.datePropertyTypeSel = function(count, obj_id){
 		}else if(type == 1){
 			var selectParam = '';
 			
-			if(og.templateParameters.length > 0){
-				
-				selectParam = '<select name="propValueParam[' + obj_id + '][' + prop + ']" id="propValueParam[' + obj_id + '][' + prop + ']">';
-				for(var j=0; j < og.templateParameters.length; j++){
-					var item = og.templateParameters[j];
-					if(item.type == "date"){
-						selectParam += '<option>' + item['name'] + '</option>';
-					}
+			selectParam = '<select name="propValueParam[' + obj_id + '][' + prop + ']" id="propValueParam[' + obj_id + '][' + prop + ']" onchange="og.datePropertyTypeSelOnChange(this,\''+obj_id+'\',\''+prop+'\');">';
+			for(var j=0; j < og.templateParameters.length; j++){
+				var item = og.templateParameters[j];
+				if(og.templates.datetypes.indexOf(item.type) != -1){
+					selectParam += '<option value="'+ item['name'] +'">' + item['name'] + '</option>';
 				}
-				selectParam += '<option value="task_creation">' + lang('date of task creation') + '</option>';
-				selectParam += '</select>';
-				datePropTD.innerHTML = '= &nbsp;<input type="hidden" name="propValues[' + obj_id + '][' + prop + ']">' + 
-					selectParam + '&nbsp;<select name="propValueOperation[' + obj_id + '][' + prop + ']" id="propValueOperation[' + obj_id + '][' + prop + ']">' +
-					'<option>+</option><option>-</option></select>&nbsp;' + 
-					'<input name="propValueAmount[' + obj_id + '][' + prop + ']" id="propValueAmount[' + obj_id + '][' + prop + ']" style="width:30px;" />' +
-					'&nbsp;<select name="propValueUnit[' + obj_id + '][' + prop + ']" id="propValueUnit[' + obj_id + '][' + prop + ']"><option value="d">'+ lang('days') + '</option>' +
-					'<option value="w">'+ lang('weeks') + '</option><option value="m">'+ lang('months') + '</option></select>';
 			}
-			if(selectParam == ''){
-				alert(lang('no parameters in template'));
-				datePropTypeSel.selectedIndex = 0;
+			selectParam += '<option value="task_creation">' + lang('date of task creation') + '</option>';
+			selectParam += '</select>';
+			var html = '= &nbsp;<input type="hidden" name="propValues[' + obj_id + '][' + prop + ']">' + 
+				selectParam + '&nbsp;<select name="propValueOperation[' + obj_id + '][' + prop + ']" id="propValueOperation[' + obj_id + '][' + prop + ']">' +
+				'<option>+</option><option>-</option></select>&nbsp;';
+
+			var amount_html = '';
+			if (og.override_template_date_amount_input && typeof(og.override_template_date_amount_input) == 'function') {
+				amount_html = og.override_template_date_amount_input.call(null, obj_id, prop);
+			} else {
+				amount_html = '<input name="propValueAmount[' + obj_id + '][' + prop + ']" id="propValueAmount[' + obj_id + '][' + prop + ']" style="width:50px;" type="number" step="any" />';
+			}
+			html += amount_html;
+
+			html += '&nbsp;<select name="propValueUnit[' + obj_id + '][' + prop + ']" id="propValueUnit[' + obj_id + '][' + prop + ']">' + 
+				'<option value="i">'+ lang('minutes') + '</option><option value="d" selected="selected">'+ lang('days') + '</option>' +
+				'<option value="w">'+ lang('weeks') + '</option><option value="m">'+ lang('months') + '</option></select>';
+			
+			if (og.config.use_time_in_task_dates) {
+				//html += '&nbsp;<span id="prop_value_time_container_'+ obj_id +'_'+ prop +'"></span>';
+			}
+			
+			datePropTD.innerHTML = html;
+			
+			if (og.config.use_time_in_task_dates) {
+				if (!value_time) value_time = '';
+				/*
+				var dueTime = new Ext.form.TimeField({
+					renderTo:'prop_value_time_container_'+ obj_id +'_'+ prop,
+					id: 'propValueTime[' + obj_id + '][' + prop + ']',
+					name: 'propValueTime[' + obj_id + '][' + prop + ']',
+					width: 80,
+					format: (og.preferences['time_format_use_24'] == 1 ? 'G:i' : 'g:i A'),
+					emptyText: 'hh:mm',
+					value: value_time
+									*/
+				//});
+				//$('#prop_value_time_container_'+ obj_id +'_'+ prop +' .x-form-field-wrap').css('display', 'inline-block').css('vertical-align','top');
+
+				og.datePropertyTypeSelOnChange(document.getElementById('propValueParam[' + obj_id + '][' + prop + ']'), obj_id, prop);
 			}
 		}
 	}
 };
 
-og.integerPropertyTypeSel = function(count, obj_id, callback){
+
+
+og.numericPropertyTypeSel = function(count, obj_id, value) {
+
+	if (og.override_template_numeric_property_selector && typeof(og.override_template_numeric_property_selector) == 'function') {
+		og.override_template_numeric_property_selector.call(null, count, obj_id, value);
+		return;
+	}
+	
+	var numericPropTD = document.getElementById('numericPropTD[' + obj_id + '][' + count + ']');
+	
+	numericPropTD.innerHTML = '';
+	
+	var propertySel = document.getElementById('objectProperties[' + obj_id + '][' + count + ']');
+	var prop = propertySel[propertySel.selectedIndex].value;
+	
+	var amount = '';
+	var param = "";
+	var operator = "+";
+	// parse the already defined value if exists
+	if(value.indexOf("+") != -1 || value.indexOf("-") != -1){
+		var posOp = 0;
+		if(value.indexOf("+") != -1){
+			posOp = value.indexOf("+");
+		}
+		if (value.indexOf("-") != -1){
+			posOp = value.indexOf("-");
+			operator = "-";
+		}
+		param = value.substring(0, posOp);
+		amount = value.substring(posOp + 1);
+	}
+	
+	// selectbox with numeric variables
+	selectParam = '<select name="propValueParam[' + obj_id + '][' + prop + ']" id="propValueParam[' + obj_id + '][' + prop + ']" >';
+	for (var j=0; j < og.templateParameters.length; j++) {
+		var item = og.templateParameters[j];
+		if (item.type.toUpperCase() == "NUMERIC") {
+			var param_selected = param == '{'+item['name']+'}' ? 'selected="selected"' : '';
+			selectParam += '<option value="'+ item['name'] +'" '+ param_selected +'>' + item['name'] + '</option>';
+		}
+	}
+	selectParam += '</select>';
+
+	var html = '= &nbsp;<input type="hidden" name="propValues[' + obj_id + '][' + prop + ']">' + selectParam + '&nbsp;';
+
+	// operator selctor
+	html += '<select name="propValueOperation[' + obj_id + '][' + prop + ']" id="propValueOperation[' + obj_id + '][' + prop + ']">' +
+		'<option '+ (operator == "+" ? 'selected="selected"' : '') +'>+</option>' +
+		'<option '+ (operator == "-" ? 'selected="selected"' : '') +'>-</option>' +
+		'</select>&nbsp;';
+
+	// amount input
+	html += '<input type="number" step="any" name="propValueAmount[' + obj_id + '][' + prop + ']" id="propValueAmount[' + obj_id + '][' + prop + ']" style="width:50px;" value="'+amount+'"/>';
+		
+	numericPropTD.innerHTML = html;
+	
+};
+
+
+og.timePropertyTypeSel = function(count, obj_id, value) {
+
+	var timePropTD = document.getElementById('timePropTD[' + obj_id + '][' + count + ']');
+	
+	timePropTD.innerHTML = '';
+	
+	var propertySel = document.getElementById('objectProperties[' + obj_id + '][' + count + ']');
+	var prop = propertySel[propertySel.selectedIndex].value;
+	
+	var param = "";
+	var var_unit = "h";
+	var operator = "+";
+	var amount = "";
+	var unit = "h";
+	// parse the already defined value if exists
+	if(value.indexOf("+") != -1 || value.indexOf("-") != -1){
+		var posOp = 0;
+		if(value.indexOf("+") != -1){
+			posOp = value.indexOf("+");
+		}
+		if (value.indexOf("-") != -1){
+			posOp = value.indexOf("-");
+			operator = "-";
+		}
+		param = value.substring(0, posOp - 1);
+		var_unit = value.substring(posOp - 1, posOp);
+		amount = value.substring(posOp + 1, value.length - 1);
+		unit = value.substring(value.length - 1);
+	}
+
+	// value = "[var][unit][operator][amount][amount_unit]"
+	// example: "{var1}d+60i" => var1 days + 60 minutes
+	
+	// selectbox with numeric variables
+	selectParam = '<select name="propValueParam[' + obj_id + '][' + prop + ']" id="propValueParam[' + obj_id + '][' + prop + ']" >';
+	for (var j=0; j < og.templateParameters.length; j++) {
+		var item = og.templateParameters[j];
+		if (item.type.toUpperCase() == "NUMERIC") {
+			var param_selected = param == '{'+item['name']+'}' ? 'selected="selected"' : '';
+			selectParam += '<option value="'+ item['name'] +'" '+ param_selected +'>' + item['name'] + '</option>';
+		}
+	}
+	selectParam += '</select>';
+
+	var html = '= &nbsp;<input type="hidden" name="propValues[' + obj_id + '][' + prop + ']">' + selectParam + '&nbsp;';
+
+	// variable unit selector
+	html += og.buildTimeUnitSelectorHtml(obj_id, prop, var_unit, 'propValueVarUnit');
+
+	// operator selctor
+	html += '<select name="propValueOperation[' + obj_id + '][' + prop + ']" id="propValueOperation[' + obj_id + '][' + prop + ']">' +
+		'<option '+ (operator == "+" ? 'selected="selected"' : '') +'>+</option>' +
+		'<option '+ (operator == "-" ? 'selected="selected"' : '') +'>-</option>' +
+		'</select>&nbsp;';
+
+	// amount input
+	html += '<input type="number" step="any" name="propValueAmount[' + obj_id + '][' + prop + ']" id="propValueAmount[' + obj_id + '][' + prop + ']" style="width:50px;" value="'+amount+'"/>&nbsp;';
+
+	// amount unit selector
+	html += og.buildTimeUnitSelectorHtml(obj_id, prop, unit, 'propValueUnit');
+		
+	timePropTD.innerHTML = html;
+}
+
+og.buildTimeUnitSelectorHtml = function(obj_id, prop, unit, field_name) {
+
+	return '<select name="'+ field_name +'[' + obj_id + '][' + prop + ']" id="'+ field_name +'[' + obj_id + '][' + prop + ']">' +
+		'<option value="i" '+ (unit == "i" ? 'selected="selected"' : '') +'>'+ lang('minutes') + '</option>' +
+		'<option value="h" '+ (unit == "h" ? 'selected="selected"' : '') +'>'+ lang('hours') + '</option>' +
+		'<option value="d" '+ (unit == "d" ? 'selected="selected"' : '') +'>'+ lang('days') + '</option>' +
+		'<option value="w" '+ (unit == "w" ? 'selected="selected"' : '') +'>'+ lang('weeks') + '</option>' +
+	'</select>&nbsp;';
+}
+
+
+og.renderAssignedToTemplatePropertySelector = function(companies, obj_id, count, prop, callback) {
+	var integerPropTD = document.getElementById('integerPropTD[' + obj_id + '][' + count + ']');
+	var html = "";
+	html += '<select name="propValues[' + obj_id + '][' + prop + ']" id="propValues[' + obj_id + '][' + prop + ']">';
+	if (companies.length > 0){
+		for (var i=0; i<companies.length; i++) {
+			if (!companies[i]) continue;
+			html += '<option value="'+ companies[i].id+'" name="propValue[' + obj_id + '][' + prop + ']">'+ companies[i].name + '</option>';
+			var users = companies[i].users;
+			for(j=0; j<users.length; j++){
+				var usu = users[j];
+				if (usu.id == 'undefined') continue;
+				html += '<option value="'+ usu.id+'" name="propValue[' + obj_id + '][' + prop + ']">'+ usu.name + '</option>';
+			}
+		}
+	}else{
+		html += '<option value="0" name="propValue[' + obj_id + '][' + prop + ']">'+ lang ('no users to display') + '</option>';
+	}
+	
+	html += '</select>';
+	integerPropTD.innerHTML = html;
+	if (typeof callback == 'function') callback();
+}
+
+
+og.integerPropertyTypeSel = function(count, obj_id, callback){	
 	var integerPropTD = document.getElementById('integerPropTD[' + obj_id + '][' + count + ']');
 	var integerPropTypeSel = document.getElementById('integerPropType[' + obj_id + '][' + count + ']');
 	var selectedPropTypeIndex = integerPropTypeSel.selectedIndex;
@@ -595,34 +891,21 @@ og.integerPropertyTypeSel = function(count, obj_id, callback){
 		var type = integerPropTypeSel[selectedPropTypeIndex].value;		
 		if(type == 0){
 			
-			og.openLink(og.getUrl('task', 'allowed_users_to_assign'), {
-				callback: function(success, data) {
-					
-					var companies = data.companies;
-					var integerPropTD = document.getElementById('integerPropTD[' + obj_id + '][' + count + ']');
-					var html = "";
-					html += '<select name="propValues[' + obj_id + '][' + prop + ']" id="propValues[' + obj_id + '][' + prop + ']">';
-					if (companies.length > 0){
-						for (var i=0; i<companies.length; i++) {
-							if (!companies[i] || companies[i].id==0) continue;
-							html += '<option value="'+ companies[i].id+'" name="propValue[' + obj_id + '][' + prop + ']">'+ companies[i].name + '</option>';
-							var users = companies[i].users;
-							for(j=0; j<users.length; j++){
-								var usu = users[j];
-								if (usu.id == 'undefined') continue;
-								html += '<option value="'+ usu.id+'" name="propValue[' + obj_id + '][' + prop + ']">'+ usu.name + '</option>';
-							}
-						}
-					}else{
-						html += '<option value="0" name="propValue[' + obj_id + '][' + prop + ']">'+ lang ('no users to display') + '</option>';
+			if (og.template_allowed_users_to_assign) {
+				
+				var companies = og.template_allowed_users_to_assign;
+				og.renderAssignedToTemplatePropertySelector(companies, obj_id, count, prop, callback);
+				
+			} else {
+				og.openLink(og.getUrl('task', 'allowed_users_to_assign', {for_template_var:1}), {
+					callback: function(success, data) {
+						og.template_allowed_users_to_assign = data.companies;
+						var companies = og.template_allowed_users_to_assign;
+						
+						og.renderAssignedToTemplatePropertySelector(companies, obj_id, count, prop, callback);
 					}
-					
-					html += '</select>';
-					integerPropTD.innerHTML = html;
-					if (typeof callback == 'function') callback();
-				}
-			});		
-			
+				});
+			}
 			
 		}else if(type == 1){
 			var selectParam = '';
@@ -633,7 +916,7 @@ og.integerPropertyTypeSel = function(count, obj_id, callback){
 					var item = og.templateParameters[j];
 					if(item.type == "user"){
 						// value="{'+ item['name'] +'}" name="propValue[' + obj_id + '][' + prop + ']"
-						selectParam += '<option>' + item['name'] + '</option>';
+						selectParam += '<option value="'+ item['name'] +'">' + item['name'] + '</option>';
 					}
 				}
 				selectParam += '</select>';
@@ -657,15 +940,19 @@ og.changeIntegerParam = function(select){
 	
 }
 
-og.editStringTemplateObjectProperty = function(obj_id, prop){
+og.editStringTemplateObjectProperty = function(obj_id, prop, value_field_id){
 	var params = [];
 	for(var j=0; j < og.templateParameters.length; j++){
 		var item = og.templateParameters[j];
-		if(item.type == "string"){
+		if(item.type == "string" || item.type == "numeric"){
 			params.push([item['name']]);
 		}
 	}
-	var valueField = document.getElementById('propValues[' + obj_id + '][' + prop + ']');
+	if (typeof value_field_id == 'undefined') {
+		var valueField = document.getElementById('propValues[' + obj_id + '][' + prop + ']');
+	} else {
+		var valueField = document.getElementById(value_field_id);
+	}
 	var config = {
 			genid: Ext.id(),
 			title: lang('edit object property'),
@@ -723,7 +1010,15 @@ og.editStringTemplateObjectProperty = function(obj_id, prop){
 		og.ExtendedDialog.show(config);
 };
 
-og.promptAddParameter = function(before, edit, pos) {
+og.promptAddParameter = function(before, edit, pos, config) {
+	var for_task_templates = true;
+	if (config) {
+		var ok_function = config.ok_function;
+		var prev_name = config.prev_name;
+		var prev_type = config.prev_type;
+		for_task_templates = config.for_task_templates;
+	}
+
 	var paramName = document.getElementById('parameters[' + pos + '][name]');
 	var paramType = document.getElementById('parameters[' + pos + '][type]');
 	var loadName = '';
@@ -731,15 +1026,82 @@ og.promptAddParameter = function(before, edit, pos) {
 	if(paramName != null){
 		loadName = paramName.value;
 		loadType = paramType.value;
+	} else {
+		if (prev_name) loadName = prev_name;
+		if (prev_type) loadType = prev_type;
 	}
+	
+	var variable_types = [['string', lang('text')],['numeric', lang('numeric')],['user', lang('user')],['date', lang('date')]];
+	if (og.templates.more_var_types) {
+		for (var i=0; i<og.templates.more_var_types.length; i++) {
+			var t = og.templates.more_var_types[i];
+			variable_types.push([t, lang(t)]);
+		}
+	}
+	
+	var dialog_items = [
+	    {
+	    	xtype: 'textfield',
+	    	fieldLabel: lang('name'),
+	    	id: 'paramName',
+	    	value: loadName
+	    },
+	    {
+	    	xtype: 'combo',
+	    	fieldLabel: lang('type'),
+	    	id: 'paramType',
+	    	mode: 'local',
+	    	width: 100,
+	    	editable: false,
+	    	disabled: edit,
+	    	forceSelection: true,
+	    	triggerAction: 'all',
+	    	displayField: 'name',
+	    	valueField: 'id',
+	    	value: loadType,
+	    	store: new Ext.data.SimpleStore({
+				fields: ['id', 'name'],
+				data : variable_types
+			})
+	    }
+	];
+	if (for_task_templates && og.templates && og.templates.more_param_prompt_items) {
+		for (var i=0; i<og.templates.more_param_prompt_items.length; i++) {
+			var item = og.templates.more_param_prompt_items[i];
+			if (edit) {
+				if (item.xtype == 'checkbox') {
+					item.checked = $('#parameters_'+pos+'_'+item.name).val()=='1' ? 'checked' : '';
+				} else {
+					item.value = $('#parameters_'+pos+'_'+item.name).val();
+				}
+			}
+			dialog_items.push(item);
+		}
+	}
+	
+	
 	var config = {
 		genid: Ext.id(),
 		title: lang('add parameter'),
-		height: 150,
+		height: 100 + (25 * dialog_items.length),
 		width: 350,
 		labelWidth: 50,
 		ok_fn: function() {
+			if (typeof ok_function == 'function') {
+				// used by c_obj_templates
+				var name = Ext.getCmp('paramName').getValue();
+				var type = Ext.getCmp('paramType').getValue();
+				/*var req_cmp = Ext.getCmp('paramIsRequired');
+				var required = req_cmp ? req_cmp.getValue() : false;*/
+				
+				ok_function.call(null, pos, name, type);
+				og.ExtendedDialog.hide();
+				return;
+			}
 			var name = Ext.getCmp('paramName').getValue();
+			if(typeof name == 'string') {
+				name = name.trim();
+			}
 			if(name == ""){
 				alert(lang('parameter name empty'));
 				return;
@@ -760,37 +1122,22 @@ og.promptAddParameter = function(before, edit, pos) {
 					}
 				}
 				paramName.value = name;
-				var paramNameSpan = document.getElementById('paramName[' + pos + ']');
+				var paramNameSpan = document.getElementById('paramName_' + pos);
 				paramNameSpan.innerHTML = '<b>' + name + '</b>&nbsp;(' + lang(type) + ') ';
 			}
+			
+			if (og.templates.after_param_prompt_ok) {
+				for (var i=0; i<og.templates.after_param_prompt_ok.length; i++) {
+					var fn = og.templates.after_param_prompt_ok[i];
+					if (typeof(fn) == 'function') {
+						fn.call(null, pos);
+					}
+				}
+			}
+			
 			og.ExtendedDialog.hide();
 		},
-		dialogItems:[
-		    {
-		    	xtype: 'textfield',
-		    	fieldLabel: lang('name'),
-		    	id: 'paramName',
-		    	value: loadName
-		    },
-		    {
-		    	xtype: 'combo',
-		    	fieldLabel: lang('type'),
-		    	id: 'paramType',
-		    	mode: 'local',
-		    	width: 100,
-		    	editable: false,
-		    	disabled: edit,
-		    	forceSelection: true,
-		    	triggerAction: 'all',
-		    	displayField: 'name',
-		    	valueField: 'id',
-		    	value: loadType,
-		    	store: new Ext.data.SimpleStore({
-					fields: ['id', 'name'],
-					data : [['string', lang('text')],['date', lang('date')],['user', lang('user')]]
-				})
-		    }
-		]
+		dialogItems: dialog_items
 	};
 	og.ExtendedDialog.show(config);
 };
@@ -815,7 +1162,7 @@ og.addParameterToTemplate = function(params, name, type, default_value) {
 	div.innerHTML =
 		'<input type="hidden" name="parameters[' + count + '][name]" id="parameters[' + count + '][name]" value="' + name + '"/>&nbsp;' +
 		'<input type="hidden" name="parameters[' + count + '][type]" id="parameters[' + count + '][type]" value="' + type + '"/>&nbsp;' +
-		'<span class="name" id="paramName[' + count + ']"><b>' + name + '</b>&nbsp;(' + lang(type) + ') </span>' +
+		'<span class="name" id="paramName_' + count + '"><b>' + name + '</b>&nbsp;(' + lang(type) + ') </span>' +
 		'<span id="editRemoveParam' + count + '" style="cursor:pointer;line-height:25px;position:absolute;right:0;top:0;"><a href="#" onclick="og.promptAddParameter(this, 1, ' + count + ')" >'+lang('edit')+'</a>' +
 		'&nbsp;|&nbsp;<a href="#" onclick="og.removeParameterFromTemplate(this.parentNode.parentNode, \'' + name + '\')" class="removeParamDiv">'+lang('remove')+'</a></span>';
 	parent.insertBefore(div, params);
@@ -848,8 +1195,8 @@ og.removeParameterFromTemplate = function(div, name) {
 	}
 	og.templateParameters.splice(j,1);
 	for(var k=j+1; k <= og.templateParameters.length; k++){
-		var paramNameSpan = document.getElementById('paramName[' + k + ']');
-		paramNameSpan.id = 'paramName[' + (k - 1) + ']';
+		var paramNameSpan = document.getElementById('paramName_' + k);
+		paramNameSpan.id = 'paramName_' + (k - 1);
 		paramNameSpan.name = 'paramName[' + (k - 1) + ']';
 		var editRemoveParamSpan = document.getElementById('editRemoveParam' + k);
 		editRemoveParamSpan.id = 'editRemoveParam' + (k - 1)

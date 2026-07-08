@@ -26,7 +26,7 @@ if (isset($task_list) && ($task_list instanceof ProjectTask || $task_list instan
 	?>
 
 <div style="padding: 7px">
-<input id="<?php echo $genid?>template_task" type="hidden" name="template_task" value="<?php echo array_var($_GET, 'template_task', false)?>" />
+<input id="<?php //echo $genid?>template_task" type="hidden" name="template_task" value="<?php echo array_var($_GET, 'template_task', false)?>" />
 <div class="tasks"><?php
 
 /*
@@ -36,7 +36,7 @@ $title = $task_list->getObjectName() != '' ? $task_list->getObjectName() : $task
 $description = '';
 $parentInf = '';
 //
-/*$task = ProjectTasks::findById(get_id());*/
+/*$task = ProjectTasks::instance()->findById(get_id());*/
  
 //start
 if (($task_list->getParent() instanceof ProjectTask || $task_list->getParent() instanceof TemplateTask)/*&& $task->canEdit(logged_user())*/) {

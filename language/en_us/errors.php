@@ -22,7 +22,7 @@
     
     // User validation errors
     'username value required' => 'Username value is required',
-    'username must be unique' => 'Sorry, but selected username is already taken',
+    'username must be unique' => 'Selected username is already taken',
     'email value is required' => 'Email address is required',
     'email address must be unique' => 'Sorry, selected email address is already taken',
     'company value required' => 'User must be part of company / organization',
@@ -32,6 +32,7 @@
     'invalid old password' => 'Old password is not valid',
     'users must belong to a company' => 'Person must belong to a company in order to generate a user',
     'contact linked to user' => 'Person is linked to user {0}',
+    'sub emails invalid email' => 'The email address {1}, added in "Other email adresses", is not valid',
   
   	// Password validation errors
   	'password invalid min length' => 'Password length must be at least {0} characters',
@@ -194,8 +195,8 @@
     'no mailAccount error' => 'Action unavailable. You do not have an email account added.',
 	'content too long not loaded' => 'Previous email content is too long and was not loaded, but will be sent with this email.',
   	'member name already exists in dimension' => 'Member \'{0}\' already exists in selected dimension.',  
-	'must choose at least one member of' => 'You must choose at least one member of {0}.',
-	'timeslot dnx' => 'Timeslot does not exist',
+	'must choose at least one member of' => 'Please select a member of {0}.',
+	'timeslot dnx' => 'Time entry does not exist',
 	'you dont have permissions to classify object in member' => 'You don\'t have permissions to classify \'{0}\' in \'{1}\'',
   
   	'uploaded file bigger than max upload size' => 'You are trying to upload a document that is over your current upload size limit of {0}.',
@@ -208,9 +209,25 @@
   	'upload error msg UPLOAD_ERR_NO_TMP_DIR' => 'No file could be uploaded, missing temporary folder.',
   	'upload error msg UPLOAD_ERR_CANT_WRITE' => 'Could not write file to disk.',
   	'upload error msg UPLOAD_ERR_EXTENSION' => 'A PHP extension stopped the file upload.',
+
+    'you cannot edit invoiced time entry' => 'You cannot edit an invoiced time entry',
+    'you cannot delete invoiced time entry' => 'You cannot delete an invoiced time entry',
+    'you cannot edit invoiced actual expense' => 'You cannot edit an invoiced actual expense',
+    'you cannot delete invoiced actual expense' => 'You cannot delete an invoiced actual expense',
+    'you cannot untrash invoice' => 'You cannot untrash an invoice',
+
   	
   	'failed to authenticate email account' => 'Failed to authenticate email account',
   	'failed to authenticate email account desc' => 'Could not authenticate account "{0}" to send notifications, please make sure that the account\'s username and password are correct.',
+  		
+  	'you cant add member without security permissions' => 'You can\'t add {0} without specifying where is located because you can\'t manage permissions. Please select where to put {0} so the permissions can be inherited.',
+  
+    'token external key value required' => 'Key is required',
+    'token external name value required' => 'Name is required',
+    'token external type value required' => 'Type is required',
+  	'you dont have permissions to add this object in members' => 'You don\'t have permissions to add this {0} in {1}',
+    'please provide input for repeat times' => 'Please provide a number for Repeat Times input',
+    'please provide date for repeat until' => 'Please provide a date for Repeat Until input'
   ); // array
 
 ?>

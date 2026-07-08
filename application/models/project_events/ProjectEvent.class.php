@@ -35,7 +35,7 @@ class ProjectEvent extends BaseProjectEvent {
 	} // __construct
 
 	function getUserName(){
-		$user = Contacts::findById($this->getCreatedById());
+		$user = Contacts::instance()->findById($this->getCreatedById());
 		if ($user instanceof Contact ) return $user->getUsername();
 		else return null;
 	}
@@ -115,7 +115,9 @@ class ProjectEvent extends BaseProjectEvent {
 	 * @return string
 	 */
 	function getEditUrl() {
-		return $this->getModifyUrl();
+		$url = $this->getModifyUrl();
+		Hook::fire('modify_object_edit_url', $this, $url);
+		return $url;
 	} // getEditUrl
 
 	/**
@@ -160,7 +162,7 @@ class ProjectEvent extends BaseProjectEvent {
 	} // canDownload
 	
 	
-	function canAdd(Contact $user, $context, &$notAllowedMember = ''){
+	static function canAdd(Contact $user, $context, &$notAllowedMember = ''){
 		return can_add($user, $context, ProjectEvents::instance()->getObjectTypeId(), $notAllowedMember);
 	}
 
@@ -235,7 +237,7 @@ class ProjectEvent extends BaseProjectEvent {
 	 * @param array $errors
 	 * @return boolean
 	 */
-	function validate(&$errors) {
+	function validate($errors) {
 		if(!$this->getObject()->validatePresenceOf('name')) $errors[] = lang('event subject required');
 		if(!$this->validateMaxValueOf('description',3000)) $errors[] = lang('event description maxlength');
 		if(!$this->getObject()->validateMaxValueOf('name', 100)) $errors[] = lang('event subject maxlength');
@@ -259,7 +261,7 @@ class ProjectEvent extends BaseProjectEvent {
 	
 	function clearInvitations() {
 		$this->event_invitations = array();
-		EventInvitations::delete(array ('`event_id` = ?', $this->getId()));
+		EventInvitations::instance()->delete(array ('`event_id` = ?', $this->getId()));
 	}
 	
 	
@@ -382,6 +384,11 @@ class ProjectEvent extends BaseProjectEvent {
 			$top_repeat_num = $this->getRepeatNum() - $res['count'];
 
 			$last_repeat = $this->getRepeatEnd() instanceof DateTimeValue ? new DateTimeValue($this->getRepeatEnd()->getTimestamp()) : null;
+			if ($last_repeat instanceof DateTimeValue) {
+				// to include the last repetition
+				$last_repeat = $last_repeat->endOfDay();
+			}
+			
 			if (($this->getRepeatNum() > 0 && $top_repeat_num <= 0) || ($last_repeat instanceof DateTimeValue && $last_repeat->getTimestamp() < $ref_date->getTimestamp())) {
 				return array();
 			}
@@ -483,7 +490,12 @@ class ProjectEvent extends BaseProjectEvent {
 						//go to the fixed day
 						$new_st_date_fixed = new DateTime(date("c", strtotime($ordinal . $day_name ." of ". $new_st_date_string)));
 						
-						$new_st_date = new DateTimeValue($new_st_date_fixed->getTimestamp());						
+						$new_st_date = new DateTimeValue($new_st_date_fixed->getTimestamp());
+						
+						// for all-day events use beggining of day to prevent that it goes to other day.
+						if ($event->getTypeId() == 2) {
+							$new_st_date = $new_st_date->beginningOfDay()->advance(logged_user()->getUserTimezoneValue() * -1, false);
+						}
 					}
 					if ($new_due_date instanceof DateTimeValue){
 						//set first day of the month
@@ -496,6 +508,11 @@ class ProjectEvent extends BaseProjectEvent {
 						$new_due_date_fixed = new DateTime(date("c", strtotime($ordinal . $day_name ." of ". $new_due_date_string)));
 						
 						$new_due_date = new DateTimeValue($new_due_date_fixed->getTimestamp());
+						
+						// for all-day events use end of day to prevent that it goes to other day.
+						if ($event->getTypeId() == 2) {
+							$new_due_date = $new_due_date->endOfDay()->advance(logged_user()->getUserTimezoneValue() * -1, false);
+						}
 					}
 					
 					$ref_date->add('M', $event->getRepeatMjump());									
@@ -515,6 +532,33 @@ class ProjectEvent extends BaseProjectEvent {
 
 		return $instances;
 	}
+	
+	
+	
+	function getArrayInfo() {
+		$formatTime = user_config_option('time_format_use_24') ? 'G:i' : 'g:i A';
+		$format = user_config_option('date_format').' '.$formatTime;
+		
+		$start_formatted = "";
+		if ($this->getStart() instanceof DateTimeValue) {
+			$start_formatted = $this->getTimezoneId()>0 ? format_datetime($this->getStart()) : $this->getStart()->format($format);
+		}
+		$duration_formatted = "";
+		if ($this->getDuration() instanceof DateTimeValue) {
+			$duration_formatted = $this->getTimezoneId()>0 ? format_datetime($this->getDuration()) : $this->getDuration()->format($format);
+		}
+		
+		return array(
+			'id' => $this->getId(),
+			'object_id' => $this->getId(),
+			'name' => $this->getObjectName(),
+			'start' => $start_formatted,
+			'duration' => $duration_formatted,
+			'description' => $this->getDescription(),
+			'type' => $this->getObjectTypeName(),
+		);
+	}
+	
 } // projectEvent
 
 ?>

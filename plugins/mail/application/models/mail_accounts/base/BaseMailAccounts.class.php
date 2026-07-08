@@ -26,12 +26,14 @@
     'is_imap' => DATA_TYPE_BOOLEAN, 
     'incoming_ssl' => DATA_TYPE_BOOLEAN, 
     'incoming_ssl_port' => DATA_TYPE_INTEGER, 
+    'incoming_ssl_verify_peer' => DATA_TYPE_BOOLEAN,
     'smtp_port' => DATA_TYPE_INTEGER,  
     'smtp_use_auth' => DATA_TYPE_INTEGER,  
     'smtp_username' => DATA_TYPE_STRING, 
     'smtp_password' => DATA_TYPE_STRING,
     'del_from_server' => DATA_TYPE_INTEGER,
     'mark_read_on_server' => DATA_TYPE_INTEGER,
+    'get_read_state_from_server' => DATA_TYPE_BOOLEAN,
     'outgoing_transport_type' => DATA_TYPE_STRING,
     'last_checked' => DATA_TYPE_DATETIME,
 	'is_default' => DATA_TYPE_BOOLEAN,
@@ -45,7 +47,11 @@
     'sync_ssl' => DATA_TYPE_BOOLEAN, 
     'sync_ssl_port' => DATA_TYPE_INTEGER, 
     'sync_folder' => DATA_TYPE_STRING,
-    'member_id' => DATA_TYPE_STRING
+    'member_id' => DATA_TYPE_STRING,
+    'can_detect_special_folders' => DATA_TYPE_BOOLEAN,
+    'oauth2_access_token' => DATA_TYPE_STRING,
+    'oauth2_provider' => DATA_TYPE_STRING,
+    'uses_oauth2' => DATA_TYPE_BOOLEAN, 
 );
   
     /**
@@ -239,7 +245,7 @@
     * @param integer $current_page Current page number
     * @return array
     */
-    function paginate($arguments = null, $items_per_page = 10, $current_page = 1) {
+    function paginate($arguments = null, $items_per_page = 10, $current_page = 1, $count = null) {
       if(isset($this) && instance_of($this, 'MailAccounts')) {
         return parent::paginate($arguments, $items_per_page, $current_page);
       } else {
@@ -254,7 +260,7 @@
     *
     * @return MailAccounts 
     */
-    function instance() {
+    static function instance() {
       static $instance;
       if(!instance_of($instance, 'MailAccounts')) {
         $instance = new MailAccounts();

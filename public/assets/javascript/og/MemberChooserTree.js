@@ -6,6 +6,21 @@ og.MemberChooserTree = function(config) {
 	}else{
 		var objectTypeQuery = '';
 	}
+	base_params = null;
+	if (config.loadAdditionalParameters) {
+		var load_additional_params = Ext.util.JSON.decode(config.loadAdditionalParameters);
+		if (load_additional_params && load_additional_params.length > 0) {
+			base_params = {};
+			for (x in load_additional_params) {
+				var input_id = load_additional_params[x];
+				var input_name = $("#"+input_id).attr('name');
+				var input_val = $("#"+input_id).val();
+				if (input_name && input_val) {
+					base_params[input_name] = input_val;
+				}
+			}
+		}
+	}
 	Ext.applyIf(config, {
 		isMultiple: false,
 		collapsible: true,
@@ -14,12 +29,14 @@ og.MemberChooserTree = function(config) {
 		allowedMemberTypes: '', //Array of dimension member types to be rendered as checkbox
 		reloadDimensions: [],
 		loader: new og.MemberChooserTreeLoader({
-			dataUrl: config.loadUrl ? config.loadUrl : 'index.php?c=dimension&a=initial_list_dimension_members_tree&ajax=true&'+
-				'dimension_id='+config.dimensionId+objectTypeQuery+
+			dataUrl: config.loadUrl ? config.loadUrl : 'index.php?c=dimension&a=initial_list_dimension_members_tree&ajax=true'+
+				'&dimension_id='+config.dimensionId+objectTypeQuery+
 				(config.checkBoxes ? '&checkboxes=true' : '')+
 				(config.all_members ? '&all_members=true' : '')+
+				(og.config.member_selector_page_size ? '&limit='+og.config.member_selector_page_size : '')+
 				'&allowedMemberTypes='+Ext.encode(config.allowedMemberTypes)+
 				'&avoid_session=1',
+			baseParams: base_params,
 			ownerTree: this 
 		}),
 		checkBoxes: true,

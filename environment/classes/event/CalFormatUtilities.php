@@ -8,8 +8,9 @@ class CalFormatUtilities {
 		
 		if (isset($parsed_data[0]['tzoffsetfrom'])){
 			$tz_diff = ($parsed_data[0]['tzoffsetfrom'] / 100);
-                }else
-			$tz_diff = logged_user()->getTimezone();
+		} else {
+			$tz_diff = logged_user()->getUserTimezoneHoursOffset();
+		}
 		unset($parsed_data[0]);
                 
 		$events_data = CalFormatUtilities::build_events_data($parsed_data, $tz_diff);
@@ -71,8 +72,30 @@ class CalFormatUtilities {
 		
 		return $result;
 	}
+
+	static function strip_tags_content($text, $tags = '', $invert = FALSE) {
+		preg_match_all('/<(.+?)[\s]*\/?[\s]*>/si', trim($tags), $tags);
+		$tags = array_unique($tags[1]);
+	  
+		if(is_array($tags) AND count($tags) > 0) {
+		  	if($invert == FALSE) {	  
+				return preg_replace('@<(?!(?:'. implode('|', $tags) .')\b)(\w+)\b.*?>.*?</\1>@si', '', $text);	  
+		  	}
+	  
+		  	else {	  
+				return preg_replace('@<('. implode('|', $tags) .')\b.*?>.*?</\1>@si', '', $text);
+		  	}	  
+		}
+	  
+		elseif($invert == FALSE) {
+			return preg_replace('@<(\w+)\b.*?>.*?</\1>@si', '', $text);
+		}
+		return $text;
+	}
+	  
+	  
 	
-	function generateICalInfo($events, $calendar_name, $user = null) {
+	static function generateICalInfo($events, $calendar_name, $user = null, $tasks = null) {
 		if ($user == null) $user = logged_user();
 		$ical_info = '';
 		$ical_info .= "BEGIN:VCALENDAR\n";
@@ -81,9 +104,12 @@ class CalFormatUtilities {
 		$ical_info .= "METHOD:REQUEST\n";
 		$ical_info .= "X-WR-CALNAME:$calendar_name\n";
 		
+		$tz_offset = $user->getUserTimezoneValue();
+		$tz_offset_hours = $tz_offset / 3600;
+		
 		// timezone info
-		$tz = ($user->getTimezone() < 0 ? "-":"+").str_pad(abs($user->getTimezone())*100, 4, '0', STR_PAD_LEFT);
-		$tz_desc = $user->getTimezone() > 0 ? lang("timezone gmt +".$user->getTimezone()) : lang("timezone gmt ".$user->getTimezone());
+		$tz = ($tz_offset_hours < 0 ? "-":"+").str_pad(abs($tz_offset_hours)*100, 4, '0', STR_PAD_LEFT);
+		$tz_desc = $tz_offset_hours > 0 ? lang("timezone gmt +".$tz_offset_hours) : lang("timezone gmt ".$tz_offset_hours);
 		$ical_info .= "BEGIN:VTIMEZONE\n";
 		$ical_info .= "TZID:$tz_desc\n";
 		$ical_info .= "BEGIN:STANDARD\n";
@@ -95,8 +121,8 @@ class CalFormatUtilities {
 		foreach ($events as $event) {
 			$ical_info .= "BEGIN:VEVENT\n";
 			
-			$event_start = new DateTimeValue($event->getStart()->getTimestamp() + 3600 * $user->getTimezone());
-			$event_duration = new DateTimeValue($event->getDuration()->getTimestamp() + 3600 * $user->getTimezone());
+			$event_start = new DateTimeValue($event->getStart()->getTimestamp() + $tz_offset);
+			$event_duration = new DateTimeValue($event->getDuration()->getTimestamp() + $tz_offset);
 			
 			$startNext = new DateTimeValue($event_start->getTimestamp());
 			$startNext->add('d', 1);
@@ -176,6 +202,52 @@ class CalFormatUtilities {
 		    
 		    $ical_info .= "END:VEVENT\n";
 		}
+
+		/**
+		 * This loop, generates the ICS calendar file with tasks attached
+		 * as events. This allows to generate a new ics file that contains both
+		 * Events and Tasks presents in the calendar.
+		 */
+		if($tasks != null)
+		{
+			foreach ($tasks as $task) {
+				$ical_info .= "BEGIN:VEVENT\n";
+	
+				$description = $task->getName();
+				$uid = $task->getObjectId();
+				$timestamp = $task->getStartDate()->format('Ymd') . "T" . $task->getStartDate()->format('His');
+	
+				$ical_info .= "DTSTART;VALUE=DATE:" . $task->getStartDate()->format('Ymd') ."\n";
+				$ical_info .= "DTEND;VALUE=DATE:" . $task->getDueDate()->format('Ymd') ."\n";
+	
+				$ical_info .= "DESCRIPTION:$description\n";
+				$ical_info .= "SUMMARY:$description\n";
+				$ical_info .= "UID:".$uid.'@fengoffice.com/html'."\n";
+				$ical_info .= "SEQUENCE:0\n";
+				$ical_info .= "DTSTAMP:$timestamp\n";
+				$ical_info .= "STATUS:CONFIRMED\n";
+				$recurrent = "";
+				if($task->getRepeatForever() > 0)
+				{
+					if ($task->getRepeatD() > 0) {
+						if ($task->getRepeatD() % 7 == 0) {
+							$recurrent = "RRULE:FREQ=WEEKLY;UNTIL=30240101T000000Z\n";
+						} else {
+							$recurrent = "RRULE:FREQ=DAILY;UNTIL=30240101T000000Z\n";
+						}
+					} else if ($task->getRepeatM() > 0) {
+						$recurrent = "RRULE:FREQ=MONTHLY;UNTIL=30240101T000000Z\n";
+					} else if ($task->getRepeatY() > 0) {
+						$recurrent = "RRULE:FREQ=YEARLY;UNTIL=30240101T000000Z\n";
+					}
+					$ical_info .= $recurrent;
+				}
+	
+				$ical_info .= "END:VEVENT\n";
+			}
+		}
+
+
 		
 		$ical_info .= "END:VCALENDAR\n";
 		
@@ -184,4 +256,3 @@ class CalFormatUtilities {
 
 }
 
-?>

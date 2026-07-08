@@ -12,25 +12,26 @@
 		$display = "";
 		$count = 1;
 		foreach ($tasks as $k => $task):
-			$crumbOptions = json_encode($task->getMembersToDisplayPath());
+			$crumbOptions = json_encode($task->getMembersIdsToDisplayPath(false, get_dashboard_breadcrumbs_options()));
 			if($crumbOptions == ""){
 					$crumbOptions = "{}";
 				}
 			$crumbJs = " og.getEmptyCrumbHtml($crumbOptions, '.task-row' ) ";
 		?>
 			<li id="<?php echo "task-".$task->getId()?>" class="task-row <?php echo $row_cls?>" style="<?php echo $display;?>">
-				<span class="completed-date"><?php echo $task->getCompletedOn() instanceof DateTimeValue ? format_datetime($task->getCompletedOn()) : '';?></span>
+				<!--<span class="completed-date"><?php echo $task->getCompletedOn() instanceof DateTimeValue ? format_datetime($task->getCompletedOn()) : '';?></span>-->
 				<span class="db-ico ico-task" style="padding:2px 8px 0;">&nbsp;</span>
 				<a href="<?php echo $task->getViewUrl() ?>">
 					<span class="completed-date bold"><?php echo $task->getCompletedByName();?>: </span>
 					<span class="task-title"><?php echo clean($task->getObjectName());?></span>
 				</a>
 				<br/>
-				<span class="breadcrumb"></span>
+				<!--<span class="breadcrumb"></span>
 				<script>
 					var crumbHtml = <?php echo $crumbJs?> ;
 					$("#task-<?php echo $task->getId()?> .breadcrumb").html(crumbHtml);
 				</script>
+				-->
 			</li>
 		<?php 
 			$count++;

@@ -175,7 +175,9 @@ og.addConditionSearch = function(genid, id, cpId, fieldName, condition, value){
 					fields += '<input type="hidden" name="conditions[' + count + '][custom_property_id]" value="' + cpId + '">';
 				}
 				document.getElementById('tdFields' + count).innerHTML = fields;
-				og.fieldChangedSearch(count, (condition != "" ? condition : ""), (value != "" ? value : ""));				
+				og.fieldChangedSearch(count, (condition != "" ? condition : ""), (value != "" ? value : ""));
+
+				og.eventManager.fireEvent('replace all empty breadcrumb', null);				
 			}
 		},
 		scope: this
@@ -232,7 +234,7 @@ og.fieldChangedSearch = function(id, condition, value){
 			conditions += '<option value="=">' + lang('equals') + '</option>';
 			conditions += '</select>';
 			document.getElementById('tdConditions' + id).innerHTML = conditions;
-		} else if(fieldType == "date"){
+		} else if(fieldType == "date" || fieldType == "datetime"){
 			document.getElementById('tdValue' + id).innerHTML = dateValueField;
 			conditions += '<option value=">">&gt;</option>';
 			conditions += '<option value=">=">&ge;</option>';

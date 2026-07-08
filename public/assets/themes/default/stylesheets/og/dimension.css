@@ -46,6 +46,14 @@ div.single-dimension-selector div.selector-body {
 	text-overflow: ellipsis;
 }
 
+div.selected-members.with-checkbox .completePath {
+	width: calc(100% - 40px);
+}
+div.selected-members.with-checkbox div.selected-member-div div.selected-member-actions {
+	width: 38px;
+	text-align: right;
+}
+	
 .single_current_selected{
 	min-height: 20px;
 	border: 1px solid #ccc;
@@ -55,8 +63,17 @@ div.single-dimension-selector div.selector-body {
 .single_current_selected .completePath{
 	width: 100%;
 	margin-bottom: 0px;
-	margin-top: 3px;
+	margin-top: 0px;
 }
+
+.x-toolbar .selected-member-div, .selected-member-div .completePath{
+	height:20px;
+}
+.x-toolbar .selected-members .selected-member-div span.member-path span {
+	font-size: 13px;
+	line-height: 18px;
+}
+
 
 div.selector-body.loading {
 	color: #999999;
@@ -168,6 +185,7 @@ div.linked-objects-member-filters div.buttons {
 
 .coInputMainBlock .dimension-selector-container {
 	margin: 0 0 14px 0;
+	display: flex;
 }
 
 .coInputMainBlock .task-data .dimension-selector-container .input-container {

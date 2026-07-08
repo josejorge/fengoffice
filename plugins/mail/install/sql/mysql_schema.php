@@ -6,14 +6,14 @@
 -- blob/text cannot have default values
 -- sql queries must finish with ;\n (line break inmediately after ;)
 
-CREATE TABLE  `<?php echo $table_prefix ?>mail_contents` (
+CREATE TABLE IF NOT EXISTS `<?php echo $table_prefix ?>mail_contents` (
   `object_id` int(10) unsigned NOT NULL,
   `account_id` int(10) unsigned NOT NULL default '0',
   `uid` varchar(255) <?php echo $default_collation ?> NOT NULL default '',
   `from` varchar(100) <?php echo $default_collation ?> NOT NULL default '',
   `from_name` VARCHAR( 250 ) NULL,
-  `sent_date` datetime NOT NULL default '0000-00-00 00:00:00',
-  `received_date` datetime NOT NULL default '0000-00-00 00:00:00',
+  `sent_date` datetime NOT NULL,
+  `received_date` datetime NOT NULL,
   `has_attachments` int(1) NOT NULL default '0',
   `size` int(10) NOT NULL default '0',
   `state` INT( 1 ) NOT NULL DEFAULT '0' COMMENT '0:nothing, 1:sent, 2:draft',
@@ -37,7 +37,7 @@ CREATE TABLE  `<?php echo $table_prefix ?>mail_contents` (
   KEY `state` (`state`)
 ) ENGINE=<?php echo $engine ?> <?php echo $default_charset ?>;
 
-CREATE TABLE  `<?php echo $table_prefix ?>mail_datas` (
+CREATE TABLE IF NOT EXISTS `<?php echo $table_prefix ?>mail_datas` (
   `id` int(10) unsigned NOT NULL,
   `to` text <?php echo $default_collation ?> NOT NULL,
   `cc` text <?php echo $default_collation ?> NOT NULL,
@@ -49,7 +49,7 @@ CREATE TABLE  `<?php echo $table_prefix ?>mail_datas` (
   PRIMARY KEY (`id`)
 ) ENGINE=<?php echo $engine ?> <?php echo $default_charset ?>;
 
-CREATE TABLE  `<?php echo $table_prefix ?>mail_accounts` (
+CREATE TABLE IF NOT EXISTS `<?php echo $table_prefix ?>mail_accounts` (
   `id` int(10) unsigned NOT NULL auto_increment,
   `contact_id` int(10) unsigned NOT NULL default '0',
   `name` varchar(40) <?php echo $default_collation ?> NOT NULL default '',
@@ -60,6 +60,7 @@ CREATE TABLE  `<?php echo $table_prefix ?>mail_accounts` (
   `is_imap` int(1) NOT NULL default '0',
   `incoming_ssl` int(1) NOT NULL default '0',
   `incoming_ssl_port` int default '995',
+  `incoming_ssl_verify_peer` tinyint(1) NOT NULL DEFAULT '0',
   `smtp_server` VARCHAR(100) <?php echo $default_collation ?> NOT NULL default '',
   `smtp_use_auth` INTEGER UNSIGNED NOT NULL default 0,
   `smtp_username` VARCHAR(100) <?php echo $default_collation ?>,
@@ -67,12 +68,13 @@ CREATE TABLE  `<?php echo $table_prefix ?>mail_accounts` (
   `smtp_port` INTEGER UNSIGNED NOT NULL default 25,
   `del_from_server` INTEGER NOT NULL default 0,
   `mark_read_on_server` INTEGER NOT NULL default 1,
+  `get_read_state_from_server` BOOLEAN NOT NULL default 1,
   `outgoing_transport_type` VARCHAR(5) <?php echo $default_collation ?> NOT NULL default '',
-  `last_checked` datetime NOT NULL DEFAULT '0000-00-00 00:00:00',
+  `last_checked` datetime NOT NULL,
   `is_default` BOOLEAN NOT NULL default '0',
   `signature` text <?php echo $default_collation ?> NOT NULL,
   `sender_name` varchar(100) <?php echo $default_collation ?> NOT NULL default '',
-  `last_error_date` datetime NOT NULL DEFAULT '0000-00-00 00:00:00',
+  `last_error_date` datetime NOT NULL,
   `last_error_msg` varchar(255) <?php echo $default_collation ?> NOT NULL,
   `sync_addr` varchar(100) <?php echo $default_collation ?> NOT NULL,
   `sync_pass` varchar(40) <?php echo $default_collation ?> NOT NULL,
@@ -81,15 +83,20 @@ CREATE TABLE  `<?php echo $table_prefix ?>mail_accounts` (
   `sync_ssl_port` int(11) NOT NULL default '993',
   `sync_folder` varchar(100) <?php echo $default_collation ?> NOT NULL,
   `member_id` varchar(100) <?php echo $default_collation ?> NOT NULL,
-  
+  `can_detect_special_folders` tinyint(1) NOT NULL default '0',
+  `oauth2_access_token` text <?php echo $default_collation ?> NOT NULL,
+  `oauth2_provider` varchar(255) <?php echo $default_collation ?> NOT NULL DEFAULT '',
+  `uses_oauth2` tinyint(1) NOT NULL default '0',
   PRIMARY KEY  (`id`),
   INDEX `contact_id` (`contact_id`)
 ) ENGINE=<?php echo $engine ?> <?php echo $default_charset ?>;
 
-CREATE TABLE  `<?php echo $table_prefix ?>mail_account_imap_folder` (
+CREATE TABLE IF NOT EXISTS `<?php echo $table_prefix ?>mail_account_imap_folder` (
   `account_id` int(10) unsigned NOT NULL default '0',
-  `folder_name` varchar(100) <?php echo $default_collation ?> NOT NULL default '',
+  `folder_name` varchar(255) <?php echo $default_collation ?> NOT NULL default '',
   `check_folder` tinyint(1) NOT NULL default '0',
+  `last_uid_in_folder` varchar(255) <?php echo $default_collation ?> NOT NULL default '',
+  `special_use` varchar(255) COLLATE utf8_unicode_ci NOT NULL,
   PRIMARY KEY  (`account_id`,`folder_name`)
 ) ENGINE=<?php echo $engine ?> <?php echo $default_charset ?>;
 
@@ -99,7 +106,7 @@ CREATE TABLE IF NOT EXISTS `<?php echo $table_prefix ?>mail_account_contacts` (
  `contact_id` INT(10) NOT NULL,
  `can_edit` BOOLEAN NOT NULL default '0',
  `is_default` BOOLEAN NOT NULL default '0',
- `signature` text <?php echo $default_collation ?> NOT NULL,
+ `signature` MEDIUMTEXT <?php echo $default_collation ?> NOT NULL,
  `sender_name` varchar(100) <?php echo $default_collation ?> NOT NULL default '',
  `last_error_state` int(1) unsigned NOT NULL default '0' COMMENT '0:no error,1:err unread, 2:err read',
  PRIMARY KEY (`id`),
@@ -120,3 +127,14 @@ CREATE TABLE IF NOT EXISTS `<?php echo $table_prefix ?>mail_spam_filters` (
   `spam_state` enum('no spam','spam') COLLATE utf8_unicode_ci NOT NULL,
   PRIMARY KEY (`id`)
 ) ENGINE = <?php echo $engine ?> <?php echo $default_charset ?>;
+
+
+CREATE TABLE IF NOT EXISTS `<?php echo $table_prefix ?>mail_content_imap_folders` (
+  `account_id` int(10) unsigned NOT NULL,
+  `message_id` varchar(255) COLLATE utf8_unicode_ci NOT NULL,
+  `folder` varchar(255) COLLATE utf8_unicode_ci NOT NULL,
+  `uid` varchar(255) <?php echo $default_collation ?> NOT NULL default '',
+  `object_id` int(10) unsigned NOT NULL default 0,
+  PRIMARY KEY (`account_id`,`folder`,`object_id`),
+  KEY `account_id_folder_object_id` (`account_id`,`folder`,`object_id`)
+) ENGINE=<?php echo $engine ?> <?php echo $default_charset ?>;

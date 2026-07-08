@@ -13,7 +13,7 @@ Ext.onReady(function(){
 			text.item(0).dom.select();
 	});
 
-	if (og.preferences['rememberGUIState']) {
+	if (og.preferences && og.preferences['rememberGUIState']) {
 		Ext.state.Manager.setProvider(new og.HttpProvider({
 			saveUrl: og.getUrl('gui', 'save_state'),
 			readUrl: og.getUrl('gui', 'read_state'),
@@ -56,12 +56,14 @@ Ext.onReady(function(){
 						fn: function(tabp) {
 							setTimeout(function(){
 								og.checkAndAdjustTabsSize();
-							}, 1000);
+							}, 500);
 						}
 					},
 					tabchange: {
 						fn: function(tabp) {
-							og.checkAndAdjustTabsSize();
+                            setTimeout(function(){
+                                og.checkAndAdjustTabsSize(tabp.lastSize.width,tabp.items.length);
+                            }, 500);
 						}
 					}
 				},
@@ -72,6 +74,7 @@ Ext.onReady(function(){
 			var center_panel = new Ext.Panel({
 				layout: 'border', 
 				id: 'center-panel',
+				minWidth: 800,
 				region:'center',
 				items: [
 				   /*	new Ext.Panel({
@@ -120,6 +123,8 @@ Ext.onReady(function(){
 				        	id: 'menu-panel',
 				        	split: true,
 				        	width: 250,
+				        	minWidth: 200,
+				        	//maxWidth: 350,
 				        	//bodyBorder: false,
 				        	hideCollapseTool:true,
 				        	collapseMode:'mini',
@@ -128,16 +133,25 @@ Ext.onReady(function(){
 				        	//autoWidth: true,
 				        	layout: 'multi-accordion',
 				        	listeners: {
+				        		'resize': function(p){
+                                    og.eventManager.fireEvent("menu-panel resize");
+                                    setTimeout(function(){
+                                        og.checkAndAdjustTabsSize();
+                                        ogTasks.initColResize();
+                                    }, 200);
+				        		},
 				        	    'collapse': function(p) {
 				        	      og.eventManager.fireEvent("menu-panel collapse");
 				        	      setTimeout(function(){
 				        	    	  og.checkAndAdjustTabsSize();
+				        	    	  ogTasks.initColResize();
 								  }, 200);
 				        	    },
 				        	    'expand': function(p) {
 					        	  og.eventManager.fireEvent("menu-panel expand");
 				        	      setTimeout(function(){
 				        	    	  og.checkAndAdjustTabsSize();
+				        	    	  ogTasks.initColResize();
 								  }, 200);
 					        	}
 				        	  },
@@ -151,8 +165,8 @@ Ext.onReady(function(){
 				        		collapsed: true,
 				        		expanded: false
 				        	},
-				        	stateful: false,
-				        	//stateful: og.preferences['rememberGUIState'],
+				        	//stateful: false,
+				        	stateful: og.preferences['rememberGUIState'],
 				        	items:  og.dimensionPanels,
 				        	bbar : [
 				        	    {	

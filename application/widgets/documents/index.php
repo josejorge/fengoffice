@@ -4,10 +4,12 @@ $panel = TabPanels::instance()->findById('documents-panel');
 if ($panel instanceof TabPanel && $panel->getEnabled()) {
 	$limit = 5;
 	$result = ProjectFiles::instance()->listing(array(
-		"extra_conditions" => "AND updated_by_id > 0",
+		"extra_conditions" => "AND o.updated_by_id > 0",
 		"order" => "updated_on",
 		"order_dir" => "desc",
 		"start" => 0,
+		"fire_additional_data_hook" => false,
+		"count_results" => false,
 		"limit" => $limit
 	));
 	$active_members = array();
@@ -21,7 +23,7 @@ if ($panel instanceof TabPanel && $panel->getEnabled()) {
 		foreach ($active_members as $member) {
 			$mnames[] = clean($member->getName());
 		}
-		$widget_title = lang('documents'). ' '. lang('in').' '. implode(", ", $mnames);
+		$widget_title = lang('documents');
 	}
 	
 	$total = $result->total;

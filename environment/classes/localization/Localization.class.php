@@ -146,6 +146,13 @@ class Localization {
 
 		// Get settings file path and include it
 		$settings_file = $this->getLanguageDirPath () . '/' . $this->getLocale () . '.php';
+
+		if(!is_file($settings_file)) {
+			// use en_us in case the language not exists
+			$this->setLocale("en_us");
+			$settings_file = $this->getLanguageDirPath() . '/' . $this->getLocale() . '.php';
+		}
+		
 		if (is_file ( $settings_file )) {
 			include $settings_file;
 		} else {
@@ -175,8 +182,8 @@ class Localization {
 				}
 			}
 			
-			// Plugins - Only PHP langs  
-			$plugins = Plugins::instance ()->getActive ();
+			// Plugins - Only PHP langs - include all installed plugins, no matter if they they have not been activated
+			$plugins = Plugins::instance()->getActive();
 			foreach ( $plugins as $plugin ) {
 				/* @var $plugin Plugin */
 				$plg_dir = $plugin->getLanguagePath () . "/" . $this->getLocale ();
@@ -266,7 +273,7 @@ class Localization {
 	 * @param int $timestamp
 	 * @return string
 	 */
-	function dateByLocalization($format, $timestamp, $timezone = 0, $view_timezone = false) {
+	static function dateByLocalization($format, $timestamp, $timezone = 0, $view_timezone = false) {
 		if ($timestamp == 0) { 
 			$timestamp = time();
 		}
@@ -277,7 +284,8 @@ class Localization {
 		$names['F'] = array(-1 => 'n', 1 => lang('month 1'), 2 => lang('month 2'), 3 => lang('month 3'), 4 => lang('month 4'), 5 => lang('month 5'), 6 => lang('month 6'), 7 => lang('month 7'), 8 => lang('month 8'), 9 => lang('month 9'), 10 => lang('month 10'), 11 => lang('month 11'), 12 => lang('month 12') );
 		$names['M'] = array(-1 => 'n');
 		for ($i = 1; $i <= 12; $i++) {
-			$names['M'][$i] = substr_utf($names['F'][$i], 0, 3);
+			$short_lang = Localization::instance()->lang("month $i short");
+			$names['M'][$i] = $short_lang ? $short_lang : substr_utf($names['F'][$i], 0, 3);
 		}
 		
 		$str_date = '';

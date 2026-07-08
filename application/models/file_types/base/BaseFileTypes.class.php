@@ -14,8 +14,7 @@
     * @var array
     * @static
     */
-    static private $columns = array('id' => DATA_TYPE_INTEGER, 'extension' => DATA_TYPE_STRING, 'icon' => DATA_TYPE_STRING, 'is_searchable' => DATA_TYPE_BOOLEAN, 'is_image' => DATA_TYPE_BOOLEAN, 'is_allow' => DATA_TYPE_BOOLEAN);
-  
+    static private $columns = array('id' => DATA_TYPE_INTEGER, 'extension' => DATA_TYPE_STRING, 'icon' => DATA_TYPE_STRING, 'is_searchable' => DATA_TYPE_BOOLEAN, 'is_image' => DATA_TYPE_BOOLEAN, 'is_allow' => DATA_TYPE_BOOLEAN, 'friendly_name' => DATA_TYPE_STRING);
     /**
     * Construct
     *
@@ -207,7 +206,7 @@
     * @param integer $current_page Current page number
     * @return array
     */
-    function paginate($arguments = null, $items_per_page = 10, $current_page = 1) {
+    function paginate($arguments = null, $items_per_page = 10, $current_page = 1, $count = null) {
       if(isset($this) && instance_of($this, 'FileTypes')) {
         return parent::paginate($arguments, $items_per_page, $current_page);
       } else {
@@ -222,7 +221,7 @@
     *
     * @return FileTypes 
     */
-    function instance() {
+    static function instance() {
       static $instance;
       if(!instance_of($instance, 'FileTypes')) {
         $instance = new FileTypes();

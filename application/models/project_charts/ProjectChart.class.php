@@ -157,7 +157,7 @@ class ProjectChart extends BaseProjectChart {
 	 * @param Project $project
 	 * @return booelean
 	 */
-	function canAdd(User $user, Project $project) {
+	static function canAdd(User $user, Project $project) {
 		return true;
 	} // canAdd
 
@@ -217,7 +217,7 @@ class ProjectChart extends BaseProjectChart {
 	 * @param array $errors
 	 * @return null
 	 */
-	function validate(&$errors) {
+	function validate($errors) {
 		if($this->validatePresenceOf('title')) {
 			if(!$this->validateUniquenessOf('title')) $errors[] = lang('chart title unique');
 		} else {

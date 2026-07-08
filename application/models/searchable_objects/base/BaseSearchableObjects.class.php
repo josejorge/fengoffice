@@ -18,7 +18,9 @@
     	'rel_object_id' => DATA_TYPE_INTEGER, 
     	'column_name' => DATA_TYPE_STRING, 
     	'content' => DATA_TYPE_STRING, 
-    	'contact_id' => DATA_TYPE_INTEGER);
+    	'contact_id' => DATA_TYPE_INTEGER,
+    	'assoc_member_id' => DATA_TYPE_INTEGER,
+    );
   
     /**
     * Construct
@@ -199,7 +201,7 @@
     * @param integer $current_page Current page number
     * @return array
     */
-    function paginate($arguments = null, $items_per_page = 10, $current_page = 1) {
+    function paginate($arguments = null, $items_per_page = 10, $current_page = 1, $count = null) {
       if(isset($this) && instance_of($this, 'SearchableObjects')) {
         return parent::paginate($arguments, $items_per_page, $current_page);
       } else {
@@ -212,7 +214,7 @@
     *
     * @return SearchableObjects 
     */
-    function instance() {
+    static function instance() {
       static $instance;
       if(!instance_of($instance, 'SearchableObjects')) {
         $instance = new SearchableObjects();

@@ -1,12 +1,12 @@
 .x-viewport body {
-	overflow-y: auto ;
+	overflow: hidden;
 }
 
 #header {
 	/*box-shadow: 0 0 3px 3px #CCCCCC;*/
 	background-color: #000000;
 	height: 55px;
-	xoverflow: hidden;	
+	/*overflow: hidden;*/	
 }
 #content {
 	position: absolute;
@@ -24,6 +24,10 @@
 }
 #helpFrame {
 	border: 0px;
+}
+
+#header #logo_company_margin_top {
+	height: 55px;
 }
 
 #header .header-content-right {
@@ -118,7 +122,7 @@
 	background-repeat: no-repeat;
 	background-position: 0 center !important;	
 }
-.ico-contacts {
+.ico-contacts, .ico-contacts-panel {
 	/*background: transparent url(../../images/16x16/all_16_16_vertical.png) no-repeat scroll 0 -517px !important;*/
 	background-image: url(../../images/icons-feng-3/24x22/contacts.png) !important;
 	background-position: 0 center !important;
@@ -141,8 +145,26 @@
 	background-image: url(../../images/icons-feng-3/24x22/tasks.png) !important;
 	background-position: 0 center !important;
 }
-
+.ico-expand.ico-task {
+	background-image: url(../../images/icons-feng-3/16x16/tasks.png) !important;
+	background-position: 0 center !important;
+	background-repeat: no-repeat;
+        background-size: 14px 14px !important;
+}
 .ico-task {
+	/*background: transparent url(../../images/16x16/all_16_16_vertical.png) no-repeat scroll 0 -177px !important;*/
+	background-image: url(../../images/icons-feng-3/16x16/tasks.png) !important;
+	background-position: 0 center !important;
+	background-repeat: no-repeat;
+}
+
+.ico-expand.ico-template_task {
+	background-image: url(../../images/icons-feng-3/16x16/tasks.png) !important;
+	background-position: 0 center !important;
+	background-repeat: no-repeat;
+        background-size: 14px 14px !important;
+}
+.ico-template_task {
 	/*background: transparent url(../../images/16x16/all_16_16_vertical.png) no-repeat scroll 0 -177px !important;*/
 	background-image: url(../../images/icons-feng-3/16x16/tasks.png) !important;
 	background-position: 0 center !important;
@@ -448,10 +470,10 @@ div.left-column-wrapper {
 
 div.right-column {
     float: left;
-    margin-left: -470px;
+    margin-left: -480px;
     padding-left: 15px;
     padding-right: 15px;
-    width: 440px;
+    width: 450px;
 }
 
 .contact div.right-column {
@@ -462,7 +484,7 @@ div.right-column {
 
 
 div.left-column {
-    margin-right: 470px;
+    margin-right: 495px;
     min-width: 200px;
     padding-right: 10px;
 }
@@ -632,6 +654,10 @@ div.layout-container.contact .right-column {
 .dashboard-container.view-container {
 	border: none!important;
 	box-shadow: none!important;
+	min-height: 100vh;
+	padding: 20px 40px 0 30px;
+	background: #f9f9f9;
+	margin: 0;
 }
 
 /** End Contact Fluid layotu */
@@ -666,12 +692,6 @@ div.layout-container.contact .right-column {
 	margin-right: 5px ;
 }
 
-.late-objects-widget .widget-header {
-	color: white;
-	background-color: #DD4444;
-	border-color: #CC1111;
-}
-
 .late-objects-widget .widget-body div.right {
 	text-align: right;
 	margin: 5px 2px;
@@ -699,12 +719,6 @@ div.layout-container.contact .right-column {
 	white-space: nowrap;
 	overflow:hidden;
 	text-overflow:ellipsis;
-}
-
-.completed-tasks .widget-header {
-	color: white;
-	background-color: #2D592C;
-	border-color: #2D592C;
 }
 
 .modal-container{

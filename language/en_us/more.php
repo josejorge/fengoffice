@@ -17,6 +17,7 @@ return array(
 		'more settings' => 'More settings',
 		'settings' => 'Settings',
 		'modules' => 'Modules',
+		'no activity yet' => 'No activity yet',
 		'modules and dimensions' => 'System modules and dimensions',
 		'other modules' => 'Other modules',
 		'not installed modules' => 'Not installed modules',
@@ -70,8 +71,19 @@ return array(
 		'system module time-panel hint' => 'The system allows the tracking of hours for each workspace, sub-space, task and user. Reporting capabilities allow to easily produce a list of hours for any time period, users and workspace.',
 		'system module gantt hint' => 'Using Gantt chart you will be able to represent phases and activities of a project breakdown structure and the flow it should have.',
 		'system module purchase-order hint' => 'This module allows you to manage the purchase orders of your organization.',
+		'system module income-panel hint' => 'Income module allows you to manage your company\'s invoices.',
+		'system module purchase-order-panel hint' => 'Allows you to manage your company\'s purchase orders.',
 		
 		'system dimension customer_project hint' => 'Allows you to organize all your clients and projects with all their related information.',
 		'system dimension workspaces hint' => 'Workspaces allow individuals and teams to organize their data and tasks, and share them with other people.',
 		'system dimension tags hint' => 'Allows you to assign tags to any object in the system.',
+
+
+		'done apply changes' => 'Done. Apply changes',
+		'config category desc organization data' => 'Here you can manage the information of your organization.',
+    
+    
+        'custom system member module hint' => 'View the {0} list in a separate tab.',
+
+		'all_expenses' => 'Expenses'
 );

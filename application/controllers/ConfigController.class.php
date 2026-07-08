@@ -38,7 +38,7 @@ class ConfigController extends ApplicationController {
 			ajx_current("empty");
 			return ;
 		} // if
-		$category = ConfigCategories::findById(get_id());
+		$category = ConfigCategories::instance()->findById(get_id());
 		if(!($category instanceof ConfigCategory)) {
 			flash_error(lang('config category dnx'));
 			$this->redirectToReferer(get_url('administration'));
@@ -52,6 +52,8 @@ class ConfigController extends ApplicationController {
 		$options = $category->getOptions(false);
 		$categories = ConfigCategories::getAll(false);
 
+		Hook::fire('additional_general_config_option', array('category' => $category), $options);
+		
 		tpl_assign('category', $category);
 		tpl_assign('options', $options);
 		tpl_assign('config_categories', $categories);
@@ -59,27 +61,35 @@ class ConfigController extends ApplicationController {
 		$submited_values = array_var($_POST, 'options');
 		if(is_array($submited_values)) {
 			foreach($options as $option) {
-                                //update global cache if available
-                                if (GlobalCache::isAvailable() && GlobalCache::key_exists('config_option_'.$option->getName())) {					
-                                        GlobalCache::delete('config_option_'.$option->getName());					
-                                }
-                                
-                                if($option->getName() == "working_days"){
-                                    $new_value = "";
-                                    foreach (array_var($submited_values, $option->getName()) as $value){
-                                        $new_value .= $value.",";
-                                    }
-                                    $new_value = substr ($new_value, 0, -1);                                    
-                                }else{             
-                                    $new_value = array_var($submited_values, $option->getName());
-                                    if(is_null($new_value) || ($new_value == $option->getValue())) continue;
-                                }
-                                
-                                $option->setValue($new_value);
-                                $option->save();
-                                evt_add("config option changed", array('name' => $option->getName(), 'value' => $new_value));
+				//update global cache if available
+				if (GlobalCache::isAvailable() && GlobalCache::key_exists('config_option_'.$option->getName())) {					
+					GlobalCache::instance()->delete('config_option_'.$option->getName());					
+				}
+				if (!$option instanceof ConfigOption) continue;
+				if($option->getName() == "working_days"){
+					$new_value = "";
+					foreach (array_var($submited_values, $option->getName()) as $value){
+						$new_value .= $value.",";
+					}
+					$new_value = substr ($new_value, 0, -1);                                    
+				}else{             
+					$new_value = array_var($submited_values, $option->getName());
+					if(is_null($new_value) || ($new_value == $option->getValue())) continue;
+				}
+				$old_value = $option->getValue();
+				
+				$option->setValue($new_value);
+				$option->save();
+				evt_add("config option changed", array('name' => $option->getName(), 'value' => $new_value, 'old_value' => $old_value));
+				
+				$ignored = null;
+				Hook::fire("config_option_changed", array('option' => $option, 'new_value' => $new_value, 'old_value' => $old_value), $ignored);
 				
 			} // foreach
+			
+			$ret = null;
+			Hook::fire('after_update_config_category', array('category' => $category, 'post' => $_POST), $ret);
+			
 			flash_success(lang('success update config category', $category->getDisplayName()));
 			ajx_current("back");
 		} // if
@@ -150,7 +160,7 @@ class ConfigController extends ApplicationController {
 	 *
 	 */
 	function update_default_user_preferences(){
-		$category = ContactConfigCategories::findById(get_id());
+		$category = ContactConfigCategories::instance()->findById(get_id());
 		if(!($category instanceof ContactConfigCategory)) {
 			flash_error(lang('config category dnx'));
 			$this->redirectToReferer(get_url('user','card'));
@@ -175,7 +185,7 @@ class ConfigController extends ApplicationController {
 				foreach ($options as $option) {
 				// update global cache if available					
 					if (GlobalCache::isAvailable()) {							
-						GlobalCache::delete('user_config_option_def_'.$option->getName());
+						GlobalCache::instance()->delete('user_config_option_def_'.$option->getName());
 					}
 					
 					$new_value = array_var($submited_values, $option->getName());
@@ -213,6 +223,54 @@ class ConfigController extends ApplicationController {
 		}catch (Exception $ex){
 			DB::rollback();
 		}
+	}
+
+	function enable_disable_widget_dimension() {
+		ajx_current("empty");
+		
+		$dimension = Dimensions::getDimensionById(array_var($_GET, 'dim_id'));
+		if (!$dimension instanceof Dimension) {
+			flash_error(lang('dimension dnx'));
+			ajx_current('empty');
+			return;
+		}
+		$enable = array_var($_GET, 'enable');
+		$default = array_var($_GET, 'is_default');
+		
+		if($default){
+			$co_widget_dimensions = ContactConfigOptions::getByName('widget_dimensions');
+			$allowed_dimensions = array_filter(explode(',', $co_widget_dimensions->getDefaultValue()));
+		} else {
+			$allowed_dimensions = array_filter(explode(',', user_config_option('widget_dimensions')));
+		}
+
+		if ($enable) {
+			if (!in_array($dimension->getId(), $allowed_dimensions)) {
+				$allowed_dimensions[] = $dimension->getId();
+				if($default){
+					$co_widget_dimensions = ContactConfigOptions::getByName('widget_dimensions');
+					$co_widget_dimensions->setDefaultValue(implode(',', $allowed_dimensions));
+					$co_widget_dimensions->save();
+				} else {
+					set_user_config_option('widget_dimensions', $allowed_dimensions);
+				}
+			}
+		} else {
+			if (in_array($dimension->getId(), $allowed_dimensions)) {
+				foreach ($allowed_dimensions as $k => &$d) {
+					if ($d == $dimension->getId()) unset($allowed_dimensions[$k]);
+				}
+				if($default){
+					$co_widget_dimensions = ContactConfigOptions::getByName('widget_dimensions');
+					$co_widget_dimensions->setValue(implode(',', $allowed_dimensions));
+					$co_widget_dimensions->save();
+				} else {
+
+					set_user_config_option('widget_dimensions', $allowed_dimensions);
+				}
+			}
+		}
+		
 	}
 } // ConfigController
 

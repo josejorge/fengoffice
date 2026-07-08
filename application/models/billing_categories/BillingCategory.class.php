@@ -79,7 +79,7 @@ class BillingCategory extends BaseBillingCategory {
 	 * @param Project $project
 	 * @return boolean
 	 */
-	function canAdd(Contact $user, Project $project) {		
+	static function canAdd(Contact $user, Project $project) {		
 		return can_add($user,$project,get_class(BillingCategories::instance()));
 	} // canAdd
 
@@ -115,7 +115,7 @@ class BillingCategory extends BaseBillingCategory {
 	 * @param array $error
 	 * @return null
 	 */
-	function validate(&$errors) {
+	function validate($errors) {
 		if(!$this->validatePresenceOf('default_value')) {
 			$errors[] = lang('BillingCategory default_value required');
 		} // if
@@ -134,7 +134,7 @@ class BillingCategory extends BaseBillingCategory {
 	}
 	
 	function getCategoryUsers() {
-		return Contacts::findAll(array('conditions' => 'default_billing_id = ' . $this->getId()));
+		return Contacts::instance()->findAll(array('conditions' => 'default_billing_id = ' . $this->getId()));
 	}
 	
 	// ---------------------------------------------------

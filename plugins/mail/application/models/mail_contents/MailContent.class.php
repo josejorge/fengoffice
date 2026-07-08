@@ -126,7 +126,7 @@ class MailContent extends BaseMailContent {
 	 * @param array $errors
 	 * @return null
 	 */
-	function validate(&$errors) {
+	function validate($errors) {
 		if(!$this->validatePresenceOf('uid')) {
 			$errors[] = lang('uid required');
 		}
@@ -145,7 +145,7 @@ class MailContent extends BaseMailContent {
 	 * @return MailData
 	 */
 	function getMailData() {
-		if (!$this->mail_data instanceof MailData) $this->mail_data = MailDatas::findById($this->getObjectId());
+		if (!$this->mail_data instanceof MailData) $this->mail_data = MailDatas::instance()->findById($this->getObjectId());
 		if (!$this->mail_data instanceof MailData) $this->mail_data = new MailData();
 		return $this->mail_data;
 	}
@@ -155,9 +155,12 @@ class MailContent extends BaseMailContent {
 		if (is_array($rows) && count($rows) > 0) {
 			if ($rows[0]['c'] < 2) {
 				// if no other emails in conversation, delete conversation
-				DB::execute("DELETE FROM `".TABLE_PREFIX."mail_conversations` WHERE `id` = " . DB::escape($this->getCOnversationId()));
+				DB::execute("DELETE FROM `".TABLE_PREFIX."mail_conversations` WHERE `id` = " . DB::escape($this->getConversationId()));
 			}
 		}
+		// delete records from mail_contents_imap_folders
+		DB::execute("DELETE FROM `".TABLE_PREFIX."mail_content_imap_folders` WHERE `object_id` = " . DB::escape($this->getId()));
+		
 		if ($delete_db_record) {
 			return parent::delete();
 		} else {
@@ -183,6 +186,8 @@ class MailContent extends BaseMailContent {
 		if ($this->getContentFileId() != '') {
 			try {
 				FileRepository::deleteFile($this->getContentFileId());
+			} catch (FileNotInRepositoryError $e) {
+				
 			} catch (Exception $e) {
 				//Logger::log($e->getMessage());
 			}
@@ -369,11 +374,11 @@ class MailContent extends BaseMailContent {
 	} // getPrintUrl
 	
 	function getSenderName() {
-		$user = Contacts::getByEmail($this->getFrom());
+		$user = Contacts::getByEmail($this->getFrom(), null, true);
 		if ($user instanceof Contact && $user->canSeeUser(logged_user())) {
 			return $user->getObjectName();
 		} else {
-			$contact = Contacts::getByEmail($this->getFrom());
+			$contact = Contacts::getByEmail($this->getFrom(), null, true);
 			if ($contact instanceof Contact && $contact->canView(logged_user())) {
 				return $contact->getObjectName();
 			}
@@ -382,11 +387,11 @@ class MailContent extends BaseMailContent {
 	}
 	
 	function getSenderUrl() {
-		$user = Contacts::getByEmail($this->getFrom());
+		$user = Contacts::getByEmail($this->getFrom(), null, true);
 		if ($user instanceof Contact && $user->canSeeUser(logged_user())) {
 			return $user->getCardUrl();
 		} else {
-			$contact = Contacts::getByEmail($this->getFrom());
+			$contact = Contacts::getByEmail($this->getFrom(), null, true);
 			if ($contact instanceof Contact && $contact->canView(logged_user())) {
 				return $contact->getCardUrl();
 			}
@@ -407,9 +412,12 @@ class MailContent extends BaseMailContent {
 	function canView(Contact $user) {
 		$account = $this->getAccount();
 		if ($account instanceof MailAccount) {
-			return ($account->getContactId() == logged_user()->getId() || can_read_sharing_table($user, $this->getId(), false));
+			$mac = MailAccountContacts::instance()->findOne(array('conditions' => 'account_id='.$account->getId()." AND contact_id=".$user->getId()));
+			return $mac instanceof MailAccountContact || 
+				$account->getContactId() == $user->getId() || 
+				can_read($user, $this->getMembers(), $this->getObjectTypeId());
 		}else{
-			return can_read_sharing_table($user, $this->getId(), false);
+			return can_read($user, $this->getMembers(), $this->getObjectTypeId());
 		}
 	}
 
@@ -426,17 +434,33 @@ class MailContent extends BaseMailContent {
 		
 		$persons_dim = Dimensions::findByCode('feng_persons');
 		$tmp = array();
+		$members_with_permissions = array();
 		foreach ($members as $m) {
-			if (!$persons_dim instanceof Dimension || $m->getDimensionId() != $persons_dim->getId()) $tmp[] = $m;
+			if (!$persons_dim instanceof Dimension || $m->getDimensionId() != $persons_dim->getId()) {
+				$tmp[] = $m;
+				if ($m->getDimension()->getDefinesPermissions()) $members_with_permissions[] = $m;
+			}
 		}
 		$members = $tmp;
 		
 		if ($account instanceof MailAccount) {
 			// if classified
 			if (count($members) > 0) {
-				return $account->getContactId() == logged_user()->getId() || can_write($user, $members, $this->getObjectTypeId());
+				// if logged user is the account owner then return true
+				if ($account->getContactId() == logged_user()->getId()) {
+					return true;
+				} else {
+					if (count($members_with_permissions) > 0) {
+						// if mail is classified in dimensions that defines permissions execute can_write function
+						return can_write($user, $members, $this->getObjectTypeId());
+					} else {
+						// if mail is classified but none of the members are in dimensions that defines permissions, then everyone with account permissions can edit
+						$macs = MailAccountContacts::instance()->count(array('`account_id` = ? AND `contact_id` = ?', $account->getId(), $user->getId()));
+						return $macs > 0;
+					}
+				}
 			} else {
-				$macs = MailAccountContacts::instance()->count(array('`account_id` = ? AND `contact_id` = ? AND `can_edit` = 1', $account->getId(), $user->getId()));
+				$macs = MailAccountContacts::instance()->count(array('`account_id` = ? AND `contact_id` = ?', $account->getId(), $user->getId()));
 				return $account->getContactId() == logged_user()->getId() || $macs > 0;
 			}
 		}else{
@@ -454,9 +478,9 @@ class MailContent extends BaseMailContent {
 	 * @access public
 	 * @param Contact $user
 	 * @param Project $project
-	 * @return booelean
+	 * @return boolean
 	 */
-	function canAdd(Contact $user, $context, &$notAllowedMember = '') {
+	static function canAdd(Contact $user, $context, &$notAllowedMember = '') {
 		return can_add($user, $context, $this->getObjectTypeId(), $notAllowedMember);
 	} // canAdd
 
@@ -535,7 +559,7 @@ class MailContent extends BaseMailContent {
     			$content = $this->getSearchableColumnContent($column_name);
     			if(trim($content) != '') {
 
-    				$searchable_object = SearchableObjects::findById(array('rel_object_id' => $this->getObjectId(), 'column_name' => $column_name));
+    				$searchable_object = SearchableObjects::instance()->findById(array('rel_object_id' => $this->getObjectId(), 'column_name' => $column_name));
     				if (!$searchable_object instanceof SearchableObject) {
     					$searchable_object = new SearchableObject();
     					$searchable_object->setRelObjectId($this->getObjectId());
@@ -549,7 +573,7 @@ class MailContent extends BaseMailContent {
     		} // foreach
     	} // if
 
-    	$rows = DB::executeAll("select column_name from ".TABLE_PREFIX."searchable_objects where rel_object_id=".$this->getObjectId());
+    	//$rows = DB::executeAll("select column_name from ".TABLE_PREFIX."searchable_objects where rel_object_id=".$this->getObjectId());
     	
     	if ($wasNew){
     		SearchableObjects::dropContentByObjectColumn($this, 'uid');
@@ -562,7 +586,7 @@ class MailContent extends BaseMailContent {
 
     		$searchable_object->save();
     	}
-    	$rows = DB::executeAll("select column_name from ".TABLE_PREFIX."searchable_objects where rel_object_id=".$this->getObjectId());
+    	//$rows = DB::executeAll("select column_name from ".TABLE_PREFIX."searchable_objects where rel_object_id=".$this->getObjectId());
     	
     }
 	
@@ -613,8 +637,8 @@ class MailContent extends BaseMailContent {
 
 
   function getDashboardObject(){
-    	$projectId = "0";
-    	$project = "";
+    	//$projectId = "0";
+    	//$project = "";
     	if (count($this->getWorkspaces()) > 0) {
     		$type = "email";
     	} else {
@@ -624,7 +648,7 @@ class MailContent extends BaseMailContent {
     	
     	$deletedOn = $this->getTrashedOn() instanceof DateTimeValue ? ($this->getTrashedOn()->isToday() ? format_time($this->getTrashedOn()) : format_datetime($this->getTrashedOn(), 'M j')) : lang('n/a');
 		if ($this->getTrashedById() > 0)
-			$deletedBy = Contacts::findById($this->getTrashedById());
+			$deletedBy = Contacts::instance()->findById($this->getTrashedById());
     	if (isset($deletedBy) && $deletedBy instanceof Contact) {
     		$deletedBy = $deletedBy->getObjectName();
     	} else {
@@ -644,7 +668,7 @@ class MailContent extends BaseMailContent {
     	
   		$archivedOn = $this->getArchivedOn() instanceof DateTimeValue ? ($this->getArchivedOn()->isToday() ? format_time($this->getArchivedOn()) : format_datetime($this->getArchivedOn(), 'M j')) : lang('n/a');
   		if ($this->getArchivedById() > 0)
-			$archivedBy = Contacts::findById($this->getArchivedById());
+			$archivedBy = Contacts::instance()->findById($this->getArchivedById());
     	if (isset($archivedBy) &&  $archivedBy instanceof Contact) {
     		$archivedBy = $archivedBy->getObjectName();
     	} else {
@@ -684,16 +708,16 @@ class MailContent extends BaseMailContent {
 	 * @return string
 	 */
 	function getTextBody() {
-		if ($this->getBodyHtml()) {
-			return html_to_text(html_entity_decode($this->getBodyHtml(),null, "UTF-8"));
-		} else {
+		if ($this->getBodyPlain()) {
 			return $this->getBodyPlain();
+		} else {
+			return html_to_text(html_entity_decode($this->getBodyHtml(),null, "UTF-8"));
 		}
 	}
 	
 	
 	function getFromContact(){
-		$contacts = Contacts::findAll(array(
+		$contacts = Contacts::instance()->findAll(array(
 			'conditions' => " jt.email_address = '".clean($this->getFrom())."'",
 			'join' => array(
 				'jt_table' => ContactEmails::instance()->getTableName(),
@@ -722,7 +746,7 @@ class MailContent extends BaseMailContent {
 			}
 			if (is_array($mail_objects)){
 				foreach ($mail_objects as $mo){
-					$objects[] = $mo;
+					$objects[$mo->getId()] = $mo;
 				}
 			}
 		}
@@ -755,7 +779,7 @@ class MailContent extends BaseMailContent {
 	 * @param void
 	 * @return array
 	 */
-	function getComments() {
+	function getComments($include_trahsed = false) {
 		return Comments::getCommentsByObjectIds(implode(',',$this->getConversationMailIds(true)));
 	} // getComments
 	
@@ -787,7 +811,7 @@ class MailContent extends BaseMailContent {
 	 * 
 	 * @see ContentDataObject::addToSharingTable()
 	 */
-	function addToSharingTable() {	
+	/*function addToSharingTable() {	
 		parent::addToSharingTable();
 		$id = $this->getId();
 		
@@ -808,7 +832,7 @@ class MailContent extends BaseMailContent {
 			}
 			
 		}
-	}
+	}*/
 	
 	/**
 	 * Use this function to order conversation
@@ -817,7 +841,7 @@ class MailContent extends BaseMailContent {
 		$id = $this->getId();
 		$convId = $this->getConversationId();
 		$accountId = $this->getAccountId();
-		$folderName = $this->getImapFolderName();
+		//$folderName = $this->getImapFolderName();
 		$state = $this->getState();
 		
 		if ($state == 2) {

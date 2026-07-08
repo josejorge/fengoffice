@@ -26,6 +26,16 @@
   		}
   		return $this->all ;
   	}
+
+	
+	/**
+	 * Returns the plugin object of a given name.
+	 * @param string $name the name of the plugin we search
+	 * @return Plugin the plugin object, or null if not exists
+	 */
+	function getByName($name) {
+		return $this->findOne(array("conditions" => array("name = ?", $name)));
+	}
   	
 	/**
 	 * 
@@ -40,9 +50,24 @@
   	}
   	
   	function isActivePlugin($name) {
+  		if (!isset($this) || !$this instanceof Plugins) {
+  			return self::instance()->isActivePlugin($name);
+  		}
 		$this->getActive();
   		foreach ($this->active as $active_plugin) {
   			if ($active_plugin->getName() == $name) return true;
+  		}
+  		
+  		return false;
+  	}
+  	
+  	function isInstalledPlugin($name) {
+  		if (!isset($this) || !$this instanceof Plugins) {
+  			return self::instance()->isInstalledPlugin($name);
+  		}
+		$this->getAll();
+  		foreach ($this->all as $installed_plugin) {
+  			if ($installed_plugin->getName() == $name) return true;
   		}
   		
   		return false;

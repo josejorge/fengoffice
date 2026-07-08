@@ -20,19 +20,29 @@
     	'type' => DATA_TYPE_STRING, 
     	'description' => DATA_TYPE_STRING,
     	'values' => DATA_TYPE_STRING,
-    	'default_value' => DATA_TYPE_STRING,
+      'default_value' => DATA_TYPE_STRING,
+      'default_currency_id' => DATA_TYPE_INTEGER,
     	'is_required' => DATA_TYPE_BOOLEAN,
     	'is_multiple_values' => DATA_TYPE_BOOLEAN,
     	'property_order' => DATA_TYPE_INTEGER,
-    	'visible_by_default' => DATA_TYPE_BOOLEAN
+    	'visible_by_default' => DATA_TYPE_BOOLEAN,
+    	'is_special' => DATA_TYPE_BOOLEAN,
+    	'is_disabled' => DATA_TYPE_BOOLEAN,
+      'show_in_lists' => DATA_TYPE_BOOLEAN,
+      'contact_type' => DATA_TYPE_STRING,
     );
-  
+    
+    static private $non_orderable_column_types = array('image','table');
+    
+    static private $non_searchable_column_types = array('contact','user','image','boolean','date','datetime');
+    
     /**
     * Construct
     *
     * @return BaseCustomProperties 
     */
     function __construct() {
+      Hook::fire('object_definition', 'CustomProperty', self::$columns);
       parent::__construct('CustomProperty', 'custom_properties', true);
     } // __construct
     
@@ -88,6 +98,28 @@
       return 'id';
     } // getAutoIncrementColumn
     
+    /**
+     * Return array of column types that are not orderable by this column type
+     *
+     * @access public
+     * @param void
+     * @return array
+     */
+    function getNonOrderableColumnTypes() {
+        return self::$non_orderable_column_types;
+    } // getNotOrderColumnTypes
+    
+    /**
+     * Return array of column types that are not searchable by it
+     *
+     * @access public
+     * @param void
+     * @return array
+     */
+    function getNonSearchableColumnTypes() {
+        return self::$non_searchable_column_types;
+    }//getNotSearchableColumnTypes
+    
     // -------------------------------------------------------
     //  Finders
     // -------------------------------------------------------
@@ -108,6 +140,7 @@
     * @throws DBQueryError
     */
     function find($arguments = null) {
+      Hook::fire('add_custom_property_arguments', array('user'=>logged_user()), $arguments);
       if(isset($this) && instance_of($this, 'CustomProperties')) {
         return parent::find($arguments);
       } else {
@@ -123,6 +156,7 @@
     * @return one or  CustomProperties objects
     */
     function findAll($arguments = null) {
+      Hook::fire('add_custom_property_arguments', array('user'=>logged_user()), $arguments);
       if(isset($this) && instance_of($this, 'CustomProperties')) {
         return parent::findAll($arguments);
       } else {
@@ -138,6 +172,7 @@
     * @return  CustomProperties 
     */
     function findOne($arguments = null) {
+      Hook::fire('add_custom_property_arguments', array('user'=>logged_user()), $arguments);
       if(isset($this) && instance_of($this, 'CustomProperties')) {
         return parent::findOne($arguments);
       } else {
@@ -169,6 +204,7 @@
     * @return integer
     */
     function count($condition = null) {
+      Hook::fire('add_custom_property_arguments', array('user'=>logged_user()), $condition);
       if(isset($this) && instance_of($this, 'CustomProperties')) {
         return parent::count($condition);
       } else {
@@ -205,7 +241,7 @@
     * @param integer $current_page Current page number
     * @return array
     */
-    function paginate($arguments = null, $items_per_page = 10, $current_page = 1) {
+    function paginate($arguments = null, $items_per_page = 10, $current_page = 1, $count = null) {
       if(isset($this) && instance_of($this, 'CustomProperties')) {
         return parent::paginate($arguments, $items_per_page, $current_page);
       } else {

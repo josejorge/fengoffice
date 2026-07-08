@@ -186,7 +186,25 @@
     */
     function setKeepsRecord($value) {
       return $this->setColumnValue('keeps_record', $value);
-    } // setKeepsRecord() 
+    } // setKeepsRecord()
+
+    
+    function getAllowsDefaultSelection() {
+    	return $this->getColumnValue('allows_default_selection');
+    }
+    
+    function setAllowsDefaultSelection($value) {
+    	return $this->setColumnValue('allows_default_selection', $value);
+    }
+    
+    function getCode() {
+    	return $this->getColumnValue('code');
+    }
+    
+    function setCode($value) {
+    	return $this->setColumnValue('code', $value);
+    }
+    
       
     /**
     * Return manager instance

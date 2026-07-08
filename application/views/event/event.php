@@ -176,7 +176,8 @@ if($event->isNew()) {
 $categories = array();
 Hook::fire('object_edit_categories', $object, $categories);
 
-$has_custom_properties = CustomProperties::countAllCustomPropertiesByObjectType($object->getObjectTypeId()) > 0;
+$main_cp_count = CustomProperties::countVisibleCustomPropertiesByObjectType($object->getObjectTypeId());
+$other_cp_count = CustomProperties::countHiddenCustomPropertiesByObjectType($object->getObjectTypeId());
 
 ?>
 	<form id="<?php echo $genid ?>submit-edit-form" class="add-event" onsubmit="<?php echo $on_submit?>" class="internalForm" action="<?php echo $form_view_url; ?>" method="post">
@@ -188,7 +189,7 @@ $has_custom_properties = CustomProperties::countAllCustomPropertiesByObjectType(
 	
 	  <div class="coInputHeaderUpperRow">
 		<div class="coInputTitle">
-			<?php echo $event->isNew() ? lang('new event') : lang('edit event') ?>
+			<?php echo $object->getAddEditFormTitle(); ?>
 		</div>
 	  </div>
 	
@@ -201,7 +202,7 @@ $has_custom_properties = CustomProperties::countAllCustomPropertiesByObjectType(
 		<div class="coInputButtons">
 		<?php
 			$is_repetitive = $event->isRepetitive() ? 'true' : 'false'; 
-			echo submit_button($event->isNew() ? lang('add event') : lang('save changes'),'e',array('style'=>'margin-top:0px;margin-left:10px', 'onclick' => (!$event->isNew() ? "javascript:if(!og.confirmEditRepEvent('".$event->getId()."',$is_repetitive)) return false;" : '')));
+			echo submit_button($object->getSubmitButtonFormTitle(),'e',array('style'=>'margin-top:0px;margin-left:10px', 'onclick' => (!$event->isNew() ? "javascript:if(!og.confirmEditRepEvent('".$event->getId()."',$is_repetitive)) return false;" : '')));
 		?>
 		</div>
 		<div class="clear"></div>
@@ -221,11 +222,17 @@ $has_custom_properties = CustomProperties::countAllCustomPropertiesByObjectType(
 			<li><a href="#<?php echo $genid?>time_and_duration"><?php echo lang('basic data') ?></a></li>
 			<li><a href="#<?php echo $genid?>add_more_details_div"><?php echo lang('more details') ?></a></li>
 			
+			<?php if ($other_cp_count || config_option('use_object_properties')) { ?>
+			<li><a href="#<?php echo $genid?>add_custom_properties_div"><?php echo lang('custom properties') ?></a></li>
+			<?php } ?>
+			
 			<li><a href="#<?php echo $genid?>add_event_invitation_div"><?php echo lang('event invitations') ?></a></li>
 			
 			<li><a href="#<?php echo $genid?>add_subscribers_div"><?php echo lang('object subscribers') ?></a></li>
 			
-			<?php foreach ($categories as $category) { ?>
+			<?php foreach ($categories as $category) {
+					if (array_var($category, 'hidden')) continue;
+				?>
 			<li><a href="#<?php echo $genid . $category['name'] ?>"><?php echo $category['name'] ?></a></li>
 			<?php } ?>
 		</ul>
@@ -236,9 +243,9 @@ $has_custom_properties = CustomProperties::countAllCustomPropertiesByObjectType(
 			<?php
 			$listeners = array('on_selection_change' => 'og.reload_subscribers("'.$genid.'",'.$object->manager()->getObjectTypeId().'); og.redrawPeopleList("'.$genid.'");');
 			if ($event->isNew()) {
-				render_member_selectors($event->manager()->getObjectTypeId(), $genid, null, array('select_current_context' => true, 'listeners' => $listeners), null, null, false);
+				render_member_selectors($event->manager()->getObjectTypeId(), $genid, null, array('select_current_context' => true, 'listeners' => $listeners, 'object' => $object), null, null, false);
 			} else {
-				render_member_selectors($event->manager()->getObjectTypeId(), $genid, $event->getMemberIds(), array('listeners' => $listeners), null, null, false);
+				render_member_selectors($event->manager()->getObjectTypeId(), $genid, $event->getMemberIds(), array('listeners' => $listeners, 'object' => $object), null, null, false);
 			} 
 			?>
 		  </div>
@@ -266,6 +273,14 @@ $has_custom_properties = CustomProperties::countAllCustomPropertiesByObjectType(
 			?>
 		  </div>
 		  <div class="clear"></div>
+		  
+		  <?php
+				if (!$event->isNew() && $event->getTimezoneId() != logged_user()->getUserTimezoneId()) {
+		  ?><div class="dataBlock"><?php 
+				  	echo timezone_selector_hidden($event, $genid);
+		  ?></div><?php
+				}
+		  ?>
 		  
 		  <div class="dataBlock">
 			<?php echo label_tag(lang('CAL_DURATION')) ?>
@@ -308,19 +323,34 @@ $has_custom_properties = CustomProperties::countAllCustomPropertiesByObjectType(
 		  </div>
 		  <div class="clear"></div>
 		  
-		<?php if ($has_custom_properties || config_option('use_object_properties')) { ?>
-		  <div id="<?php echo $genid ?>add_custom_properties_div">
-			<?php echo render_object_custom_properties($object, false) ?>
+		  <?php $null = null; Hook::fire('before_render_main_custom_properties', array('object' => $object), $null);?>
+		  
+			<div class="main-custom-properties-div"><?php
+				if ($main_cp_count) {
+					echo render_object_custom_properties($object, false, null, 'visible_by_default');
+				}
+			?></div>
+			
+		</div>
+		
+		<?php if ($other_cp_count || config_option('use_object_properties')) { ?>
+		  <div id="<?php echo $genid ?>add_custom_properties_div" class="form-tab other-custom-properties-div">
+			<?php echo render_object_custom_properties($object, false, null, 'other') ?>
 			<?php echo render_add_custom_properties($object);?>
 		  </div>
-		<?php } ?>		  
-		  
-		</div>
+		<?php } ?>
 		
 		<div id="<?php echo $genid ?>add_more_details_div"  class="form-tab">
 		
 		  <div class="reminders-div sub-section-div" style="border-top:0px none;">
 			<h2><?php echo lang('object reminders')?></h2>
+			
+			<?php 
+				$note = '';
+				Hook::fire('show_reminder_note', null, $note);
+				echo $note;
+			?>
+
 			<div id="<?php echo $genid ?>add_reminders_content">
 				<div id="<?php echo $genid ?>add_reminders_warning" class="desc" style="display:none;">
 					<?php echo lang('reminders will not apply to repeating events') ?>
@@ -497,9 +527,12 @@ $has_custom_properties = CustomProperties::countAllCustomPropertiesByObjectType(
 				$subscriber_ids[] = logged_user()->getId();
 			}
 		?><input type="hidden" id="<?php echo $genid ?>subscribers_ids_hidden" value="<?php echo implode(',',$subscriber_ids)?>"/>
-		<div id="<?php echo $genid ?>add_subscribers_content">
-			<?php //echo render_add_subscribers($object, $genid); ?>
-		</div>
+		<input type="hidden" id="<?php echo $genid ?>original_subscribers" value="<?php echo implode(',',$subscriber_ids)?>"/>
+		<div id="<?php echo $genid ?>add_subscribers_content"><?php
+				foreach ($subscriber_ids as $subid) {
+					echo '<input type="hidden" name="subscribers[user_'.$subid.']" value="1"/>';
+				} 
+			?></div>
 	</div>
 	
 
@@ -507,8 +540,8 @@ $has_custom_properties = CustomProperties::countAllCustomPropertiesByObjectType(
 	
 		<div class="dataBlock">
 			<p><?php echo lang('event invitations desc') ?></p>
-			<p><?php $event_send_invitations = (user_config_option("event_send_invitations") && $event->isNew()) ? true : false;
-					 $event_subscribe_invited = (user_config_option("event_subscribe_invited") && $event->isNew()) ? true : false;
+			<p><?php $event_send_invitations = (user_config_option("event_send_invitations") ) ? true : false;
+					 $event_subscribe_invited = (user_config_option("event_subscribe_invited") ) ? true : false;
 					 echo checkbox_field('event[send_notification]', array_var($event_data, 'send_notification', $event_send_invitations), array('id' => $genid . 'eventFormSendNotification')) ?>
 			<label for="<?php echo $genid ?>eventFormSendNotification" class="checkbox"><?php echo lang('send new event notification') ?></label></p>
 			
@@ -564,7 +597,7 @@ $has_custom_properties = CustomProperties::countAllCustomPropertiesByObjectType(
 
 	</div>
 	<?php if (!array_var($_REQUEST, 'modal')) {
-		echo submit_button($event->isNew() ? lang('add event') : lang('save changes'),'e',array('onclick' => (!$event->isNew() ? "javascript:if(!og.confirmEditRepEvent('".$event->getId()."',$is_repetitive)) return false;" : ''))); 
+		echo submit_button($object->getSubmitButtonFormTitle(),'e',array('onclick' => (!$event->isNew() ? "javascript:if(!og.confirmEditRepEvent('".$event->getId()."',$is_repetitive)) return false;" : ''))); 
 	}?>
   </div>
 </form>
@@ -613,7 +646,7 @@ og.drawInnerHtml = function(companies) {
 				htmlStr += '<div class="contact-picture-container" style="float:left;padding-top:3px;">' +
 					'<img class="commentUserAvatar" src="'+ og.allUsers[usr.id].img_url +'" alt="'+og.clean(usr.name)+'" /></div>';
 				
-				htmlStr += '<label for="' + genid + 'notifyUser' + usr.id + '" style="float:left; width: 125px; min-width:0px; overflow:hidden; padding-left: 5px;>' +
+				htmlStr += '<label for="' + genid + 'notifyUser' + usr.id + '" style="float:left; width: 125px; min-width:0px; overflow:hidden; padding-left: 5px; padding-right: 5px;">' +
 					'<span class="ico-user link-ico">'+og.clean(usr.name)+'</span><br>' +
 					'<span style="color:#888888;font-size:90%;font-weight:normal;">'+ usr.mail+ '</span></label>';
 				

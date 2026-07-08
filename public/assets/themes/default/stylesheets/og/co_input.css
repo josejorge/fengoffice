@@ -5,6 +5,10 @@
 	color:#666;
 }
 
+#reporting-panel .coInputHeader {
+	margin-bottom: 15px;
+}
+
 .coInputSeparator {
 /*	background-image: url(../../images/layout/shadow.png);
 	height: 6px;
@@ -38,23 +42,30 @@
 .coInputMainBlock .dataBlock {
 	margin: 0 0 12px 0;
 	min-height: 20px;
+	align-items: center;
 }
+
+.cke_chrome{
+	width: 100% !important;
+}
+
 
 .dataBlock .og-add-template-object {
 	float: left;
 	padding-left: 0;
-	max-width: 260px;
+    width: 100%;
+
 }
 .dataBlock .og-add-template-object .parent-task-name {
 	float: left;
-	max-width: 250px;
+	width: 285px;
 	white-space: nowrap;
 	overflow: hidden;
 	text-overflow: ellipsis;
 }
 .dataBlock .og-add-template-object .previous-task-name {
 	float: left;
-	max-width: 360px;
+	width: 285px;
 	white-space: nowrap;
 	overflow: hidden;
 	text-overflow: ellipsis;
@@ -62,8 +73,7 @@
 .dataBlock .og-add-template-object.previous-task {
 	float: none;
 	clear: both;
-	max-width: 460px;
-	margin: 3px;
+    width: 100%;
 }
 .dataBlock .removeDiv {
 	position: relative;
@@ -74,8 +84,9 @@
 	padding-left: 17px;
 	margin-left: 10px;
 }
-.coInputMainBlock .dataBlock .ws-color-chooser {
-	margin-left: 200px;
+.coInputMainBlock .ws-color-chooser {
+	margin-left: 0px;
+	display: inline-block;
 }
 
 .coInputTags {
@@ -86,7 +97,9 @@
 
 .coInputMainBlock label {
 	float: left;
-	min-width: 200px;
+	min-width: 150px;
+	padding-right: 20px;
+	flex-basis: 0;
 }
 
 .coInputMainBlock .report-conditions label {
@@ -109,24 +122,36 @@
 	float: none;
 }
 
+form.add-task {
+	width: 1250px;
+}
 .task-data .left-section, .task-data .right-section {
 	float: left;
+}
+.task-data td.left-section-td {
+	border-right:1px solid #ccc;
 }
 .task-data .left-section {
 	min-width: 465px;
 	max-width: 620px;
-	border-right:1px solid #ccc;	
+	width: 580px;
 }
 .task-data .right-section {
 	min-width: 465px;
-	padding-left: 10px;	
+	padding-left: 20px;	
 }
 .task-data {
 	min-width: 950px;
 }
-.task-data .dataBlock input.checkbox{
-	margin-top: 5px;
+.task-data .dataBlock input.checkbox {
+	margin-top: 4px;
 	margin-left: 10px;
+}
+.task-data .left-section .dataBlock input.checkbox {
+	margin-left: 0px;
+}
+.task-data .left-section label {
+	min-width: 190px;
 }
 
 .coInputLinkedObjects {
@@ -170,4 +195,101 @@
 .im-container table th {
 	text-align: center;
 	padding: 2px 4px;
+}
+
+
+
+.headerToolbarItem {
+    display: inline;
+    margin: 0 5px;
+}
+.headerToolbarItem a.link-ico {
+    font-size: 12px;
+    padding-left: 18px;
+    text-decoration: underline;
+}
+.headerToolbarItem a.link-ico.ico-delete {
+	padding-top: 4px;
+}
+.headerToolbarItem a.link-ico.ico-archive-obj, .headerToolbarItem a.link-ico.ico-unarchive-obj {
+	padding-top: 1px;
+}
+.headerToolbar {
+    text-align: right;
+    margin-top: -12px;
+    margin-right: 20px;
+}
+
+
+
+/******** New color selector css ********/
+table.color-selector {
+	width: 80px;
+}
+table.color-selector td {
+	padding: 0px;
+	margin: 0px;
+}
+table.color-selector td .color-selector-sample {
+	margin: 2px;
+}
+.color-selector-sample {
+	width: 40px;
+	height: 20px;
+	padding: 4px;
+	text-align: center;
+	border-radius: 2px;
+	font-weight: bold;
+	cursor: pointer
+}
+.popover-content .modal-close-img {
+	margin: 0;
+	margin-left: 20px;
+}
+.popover-content .title-container {
+	margin-bottom: 5px;
+	text-align: left;
+}
+.popover-content .title-container .title {
+	font-size: 125%;
+	color: #555;
+	font-weight: bold;
+	margin-left: 5px;
+}
+/******** End color selector css ********/
+
+/******** Dropdown links list (with popover) css ********/
+.popover-content .dropdown-links {
+	margin: 5px;
+}
+
+.popover-content .dropdown-links li {
+	margin: 10px 0;
+}
+
+.popover-content .dropdown-links li a {
+	width: 100%;
+	display: inline-block;
+	text-decoration: underline;
+	color: #176fb9;
+}
+.popover-content .dropdown-links li a:hover {
+	opacity: 0.75;
+}
+/******** End Dropdown links list (with popover) css ********/
+
+
+.configCategory .dimension {
+    float: left;
+}
+
+.configCategory .dimension label {
+    margin: 0 5px;
+    display: inline;
+    vertical-align: super;
+}
+
+.configCategory .dimension input[type="checkbox"] {
+    float: left;
+    margin-top: 2px;
 }

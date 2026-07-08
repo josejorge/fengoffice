@@ -75,7 +75,13 @@ og.contextManager  = new function() {
     					}else{
     						panel.show();
     						panel.expand();
+    						
+    						// expand nodes after setting visible
+    						if (panel && panel.getRootNode()) {
+    							panel.getRootNode().expand();
+    						}
     					}
+
     					
     					og.contextManager.setDimensionVisibility(item.dimensionId, status);
     					
@@ -182,7 +188,7 @@ og.contextManager  = new function() {
     
     this.getTreeNode = function (dimId, memberId){ 
     	var tree =  Ext.getCmp("dimension-panel-"+dimId);
-    	return  tree.getNodeById(memberId);
+    	return tree ? tree.getNodeById(memberId) : null;
     	
     }
     
@@ -250,6 +256,22 @@ og.contextManager  = new function() {
     	if ( dimension && this.dimensionMembers[dimension] ) return this.dimensionMembers[dimension] ;
     	else if (dimension) return [] ;
     	else return null ;
+    }
+    
+    
+    /**
+     * Returns an array of member ids for certain diemension that are in the context 
+     */
+    this.getSelectedMembers = function () {
+		var mem_ids = [];
+		for (var dimension in this.dimensionMembers) {
+			if (this.dimensionMembers[dimension]) {
+				mem_ids = mem_ids.concat(this.dimensionMembers[dimension]);
+			}
+		}
+		return mem_ids.filter(function(mid){
+			return mid > 0;
+		});
     }
     
     this.plainActiveMembers = function () {
@@ -329,6 +351,27 @@ og.contextManager  = new function() {
 		}
 		
 		return context_names;
+    }
+    
+    this.getSelectedMemberObjectTypeId = function(dimension_id) {
+    	var sel_member_type = 0;
+    	context_ids = Ext.util.JSON.decode(this.plainContext());
+		for (dim_id in context_ids) {
+			if (dim_id == dimension_id) {
+				var mids = context_ids[dim_id];
+				for (i=0; i<mids.length; i++) {
+					if (mids[i] > 0) {
+						var tree = Ext.getCmp('dimension-panel-'+dimension_id);
+						if (tree) {
+							var node = tree.getNodeById(mids[i]);
+							if (node) sel_member_type = node.object_type_id; 
+						}
+					}
+				}
+				break;
+			}
+		}
+		return sel_member_type;
     }
 }
 

@@ -56,6 +56,8 @@ og.LinkedObjectManager = function(config) {
 						var sm = cmp.getSelectionModel();
 						sm.clearSelections();
 					}
+					
+					og.eventManager.fireEvent('replace all empty breadcrumb', null);
 				}
 			}
 		});
@@ -87,8 +89,12 @@ og.LinkedObjectManager = function(config) {
 		}
 		
 		mem_path = "";
-		var mpath = Ext.util.JSON.decode(r.data.memPath);
-		if (mpath) mem_path = og.getCrumbHtml(mpath);
+		var mpath = r.data.memPath != "" ? Ext.util.JSON.decode(r.data.memPath) : null;
+		if (mpath){ 
+			mem_path = "<div class='breadcrumb-container' style='display: inline-block;'>";
+			mem_path += og.getEmptyCrumbHtml(mpath, '.breadcrumb-container', og.breadcrumbs_skipped_dimensions);
+			mem_path += "</div>";
+		}
 		
 		var name = String.format('<a style="font-size:120%" href="{1}" onclick="og.openLink(\'{1}\');return false;">{0}</a>', cleanvalue, viewUrl) + mem_path;
 		

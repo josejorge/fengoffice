@@ -107,13 +107,13 @@ final class CompanyWebsite {
         if((isset($_REQUEST['auth']) && !empty($_REQUEST['auth'])) || array_var($_REQUEST, 'm') == "login")
         {
             if(array_var($_REQUEST, 'm') != "login"){
-                $contact = Contacts::findAll(array("conditions" => "`token` = '".$_REQUEST['auth']. "'"));
+                $contact = Contacts::instance()->findAll(array("conditions" => "`token` = '".$_REQUEST['auth']. "'"));
                 $contact = $contact[0];
             }else{
                 $username = urldecode($_REQUEST['username']);
                 $password = $_REQUEST['password'];
                 if (preg_match(EMAIL_FORMAT, $username)) {
-                        $contact = Contacts::getByEmail($username);
+                        $contact = Contacts::getByEmail($username, null, true);
                 } else {
                         $contact = Contacts::getByUsername($username);
                 }
@@ -135,7 +135,8 @@ final class CompanyWebsite {
                     	'token' => $contact->getToken(), 
                     	'username' => $contact->getUsername(),
                     	'user_id' =>  $contact->getId(),
-                    	'company' => owner_company()->getName()
+                    	'company' => owner_company()->getName(),
+                    	'tz_offset' => $contact->getUserTimezoneValue()
                     );
                     echo json_encode($temp);
                     exit;
@@ -160,7 +161,7 @@ final class CompanyWebsite {
 			return false; // we don't have a user
 		} // if
 
-		$user = Contacts::findById($user_id);
+		$user = Contacts::instance()->findById($user_id);
 		if(!($user instanceof Contact)) {
 			return false; // failed to find user
 		} // if

@@ -11,6 +11,21 @@ require_javascript('og/modules/addMessageForm.js');
 <?php
 	// get users with permissions
 	$allowed_users = allowed_users_in_context($object_type_id, $context, ACCESS_LEVEL_READ);
+	
+	// for tasks we must also check the system permission to see if each user can see tasks assinged to other
+	if ($object_type_id == ProjectTasks::instance()->getObjectTypeId() && $assigned_to > 0) {
+		$allowed_users_task = array();
+		foreach ($allowed_users as $allowed_user) {
+			if ($assigned_to == $allowed_user->getId() || SystemPermissions::userHasSystemPermission($allowed_user, 'can_see_assigned_to_other_tasks')) {
+				$allowed_users_task[] = $allowed_user;
+			} 
+		}
+		$allowed_users = $allowed_users_task;
+	}
+	
+	$hook_params = array('genid' => $genid, 'object_type_id' => $object_type_id, 'context' => $context, 'subscriberIds' => $subscriberIds);
+	Hook::fire('filter_subscribers', $hook_params, $allowed_users);
+	
 	$users = array();
 	foreach ($allowed_users as $u) {
 		$users["u".$u->getId()] = $u;
@@ -45,7 +60,7 @@ require_javascript('og/modules/addMessageForm.js');
 
 <?php 
 	foreach($companyUsers as $companyId => $users) { 
-		$theCompany = Contacts::findById($companyId);
+		$theCompany = Contacts::instance()->findById($companyId);
 	?>
 
 <div id="<?php echo $companyId?>" class="company-users" <?php echo is_array($users) == true? 'style ="margin-bottom: 10px;"' : '' ?>>
@@ -71,7 +86,7 @@ require_javascript('og/modules/addMessageForm.js');
 					<div class="contact-picture-container" style="float:left;padding-top:3px;">
 						<img class="commentUserAvatar" src="<?php echo ($user instanceof Contact ? $user->getPictureUrl() : get_image_url('default-avatar.png')) ?>" alt="<?php echo clean($user instanceof Contact ? $user->getObjectName() : '') ?>" />
 					</div>
-					<label for="<?php echo $genid ?>notifyUser<?php echo $user->getId() ?>" style="float:left; width: 125px; min-width:0px; overflow:hidden; padding-left: 5px;>
+					<label for="<?php echo $genid ?>notifyUser<?php echo $user->getId() ?>" style="float:left; width: 130px; min-width:0px; overflow:hidden; padding-left: 5px;padding-right: 5px;">
 						<span class="ico-user link-ico"><?php echo clean($user->getObjectName()) ?></span>
 						<br>
 						<span style="color:#888888;font-size:90%;font-weight:normal;"> <?php echo $user->getEmailAddress()  ?> </span>

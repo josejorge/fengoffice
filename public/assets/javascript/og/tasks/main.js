@@ -12,7 +12,7 @@ ogTasks.Users = [];
 ogTasks.Companies = [];
 ogTasks.Milestones = [];
 
-ogTasks.TotalCols = {};
+ogTasks.TasksList = {};
 
 ogTasks.Groups = [];
 
@@ -45,9 +45,11 @@ ogTasksTask = function(){
 	this.workingOnIds;
 	this.workingOnTimes;
 	this.workingOnPauses;
+	this.previous_tasks_total;
 	this.pauseTime;
 	this.isAdditional = false;
 	this.isRead = true;
+	this.mark_as_started;
 	this.completedById;
 	this.completedOn;
 	this.repetitive = false;
@@ -75,6 +77,11 @@ ogTasksTask = function(){
 	this.isCreatedClientSide = false;
 	
 	this.canAddTimeslots = false;
+	
+	this.additional_data = {};
+	
+	this.custom_properties = {};
+        this.toggleSubtasksShow = false;
 }
 
 ogTasksTask.prototype.flatten = function(){
@@ -88,12 +95,13 @@ ogTasksTask.prototype.flatten = function(){
 }
 
 ogTasksTask.prototype.setFromTdata = function(tdata){
+	
 	this.id = tdata.id;
 	this.title = tdata.name;
 	this.description = tdata.description;
 	this.createdOn = tdata.createdOn;
 	this.createdBy = tdata.createdById;
-		
+	this.mark_as_started = parseInt(tdata.mark_as_started) == 1;
 	var dummyDate = new Date();
 
 	if (tdata.dependants) this.dependants = tdata.dependants; else this.dependants = [];
@@ -108,6 +116,7 @@ ogTasksTask.prototype.setFromTdata = function(tdata){
 	if (tdata.workingOnIds) this.workingOnIds = tdata.workingOnIds; else this.workingOnIds = null;
 	if (tdata.workingOnTimes) this.workingOnTimes = tdata.workingOnTimes; else this.workingOnTimes = null;
 	if (tdata.workingOnPauses) this.workingOnPauses = tdata.workingOnPauses; else this.workingOnPauses = null;
+	if (tdata.previous_tasks_total) this.previous_tasks_total = tdata.previous_tasks_total; else this.previous_tasks_total = 0;
 	if (tdata.pauseTime) this.pauseTime = tdata.pauseTime; else this.pauseTime = null;
 	if (tdata.completedById) this.completedById = tdata.completedById; else this.completedById = null;
 	if (tdata.completedOn) this.completedOn = tdata.completedOn; else this.completedOn = null;
@@ -123,6 +132,9 @@ ogTasksTask.prototype.setFromTdata = function(tdata){
 	if (tdata.pending_time_string) this.pending_time_string = tdata.pending_time_string; else this.pending_time_string = '';
 	if (tdata.worked_time) this.worked_time = tdata.worked_time; else this.worked_time = 0;
 	if (tdata.worked_time_string) this.worked_time_string = tdata.worked_time_string; else this.worked_time_string = '';
+	if (tdata.overall_worked_time_string) this.overall_worked_time_string = tdata.overall_worked_time_string; else this.overall_worked_time_string = '';
+	if(tdata.totalTimeEstimate) this.totalTimeEstimate = tdata.totalTimeEstimate; else this.totalTimeEstimate = 0;
+	if (tdata.totalTimeEstimateString) this.totalTimeEstimateString = tdata.totalTimeEstimateString; else this.totalTimeEstimateString = '';
 	
 	if (tdata.timeEstimate) this.TimeEstimate = tdata.timeEstimate; else this.TimeEstimate = 0;
 	if (tdata.depCount) this.depCount = tdata.depCount; else this.depCount = null;
@@ -134,6 +146,14 @@ ogTasksTask.prototype.setFromTdata = function(tdata){
 	if (tdata.subtasksIds) this.subtasksIds = tdata.subtasksIds;
 	
 	if (tdata.can_add_timeslots) this.canAddTimeslots = tdata.can_add_timeslots;
+	
+	if (tdata.additional_data) this.additional_data = tdata.additional_data;
+	
+	if (tdata.custom_properties) this.custom_properties = tdata.custom_properties;
+
+	if (tdata.prevent_add_time_to_parent_task) this.prevent_add_time_to_parent_task = tdata.prevent_add_time_to_parent_task;
+
+	if (tdata.is_parent) this.is_parent = tdata.is_parent;
 }
 
 ogTasksMilestone = function(id, title, dueDate, totalTasks, completedTasks, isInternal, isUrgent){
@@ -206,6 +226,7 @@ ogTasks.loadData = function(data){
 				this.currentUser = user;
 		}
 	}
+	if (!this.currentUser) this.currentUser = og.loggedUser;
 	
 	this.TotalCols = {};
 	var topToolbar = Ext.getCmp('tasksPanelTopToolbarObject');
@@ -213,11 +234,17 @@ ogTasks.loadData = function(data){
 	if (drawOptions.show_time_estimates) {
 		this.TotalCols.estimatedTime = {title: 'estimated', group_total_field: 'TimeEstimate', row_field: 'estimatedTime'};
 	}
+	if (drawOptions.show_total_time_estimates) {
+		this.TotalCols.totalEstimatedTime = {title: 'total estimated', group_total_field: 'TotalTimeEstimate', row_field: 'totalTimeEstimateString'};
+	}
 	if (drawOptions.show_time_pending) {
 		this.TotalCols.pendingTime = {title: 'pending', group_total_field: 'pending_time', row_field: 'pending_time_string'};	
 	}
 	if (drawOptions.show_time_worked) {
 		this.TotalCols.workedTime = {title: 'worked', group_total_field: 'worked_time', row_field: 'worked_time_string'};	
+	}
+	if (drawOptions.show_total_time_worked) {
+		this.TotalCols.totalWorkedTime = {title: 'total worked', group_total_field: 'overall_worked_time', row_field: 'overall_worked_time_string'};	
 	}
 	
 	this.AllUsers = [];
@@ -303,9 +330,6 @@ ogTasks.TaskSelected = function(checkbox, task_id, group_id){
 	task.isChecked = checkbox.checked;
 	var topToolbar = Ext.getCmp('tasksPanelTopToolbarObject');
 	topToolbar.updateCheckedStatus();
-	
-	if (task.isChecked) rx__TasksDrag.addTaskToMove(task_id);
-	else rx__TasksDrag.removeTaskToMove(task_id);
 }
 
 
@@ -323,10 +347,7 @@ ogTasks.GroupSelected = function(checkbox, group_id){
 		tasks[i].isChecked = checkbox.checked;
 		var tgId = "T" + tasks[i].id + 'G' + group_id;
 		var chkTask = document.getElementById('ogTasksPanelChk' + tgId);
-		chkTask.checked = checkbox.checked;
-		
-		if (chkTask.checked) rx__TasksDrag.addTaskToMove(tasks[i].id);
-		else rx__TasksDrag.removeTaskToMove(tasks[i].id);
+		if (chkTask) chkTask.checked = checkbox.checked;
 		
 		var table = document.getElementById('ogTasksPanelTaskTable' + tgId);
 		if (table)
@@ -341,48 +362,127 @@ ogTasks.GroupSelected = function(checkbox, group_id){
 //*		Helpers
 //************************************
 
+ogTasks.updateDependantTasks = function(task_id, add){
+	var task = ogTasksCache.getTask(task_id);
+	var dependant_task;
+	for (var i = 0; i < task.dependants.length; i++){		
+		dependant_task = ogTasksCache.getTask(task.dependants[i]);
+		if (add){
+			dependant_task.previous_tasks_total++;
+		}else{
+			dependant_task.previous_tasks_total--;
+		}
+		ogTasks.UpdateTask(task.dependants[i],true);
+	}
+}
 
-ogTasks.executeAction = function(actionName, ids, options){
-	if (!ids)
-		var ids = this.getSelectedIds();
-	
-	og.openLink(og.getUrl('task', 'multi_task_action'), {
-		method: 'POST',
-		post: {
-			"ids": ids.join(','),
-			"action" : actionName,
-			"options": options
-		},
-		callback: function(success, data) {
-			if (success && ! data.errorCode) {
-				for (var i = 0; i < data.tasks.length; i++){
-					var tdata = data.tasks[i];
-					var task = ogTasksCache.addTasks(tdata);
-					if (actionName == 'delete' || actionName == 'archive'){
-						//remove task from cache	
-						ogTasksCache.removeTask(task);
-						ogTasks.removeTaskFromView(task);
-					}else{						
-						ogTasks.UpdateTask(task.id,false);	
+ogTasks.executeAction = function(actionName, ids, options,partent){
+
+    if (actionName == 'start_work'){
+        if(partent != undefined){
+            var listOfRunningTime = $(partent).find('.og-timeslot-work-started, .og-timeslot-work-paused')
+            if (listOfRunningTime.length > 0 && og.config.stop_running_timeslots == 1){
+                listOfRunningTime.each(function (index) {
+                    var data_id = $(this).parent().find('a:first').attr('data-id');
+
+                    ogTasks.closeTimeslot([data_id],function (status) {
+                        if (status){
+                            ogTasks.executeActionFinal(actionName,ids,options,function () {
+                            });
+                        }
+                    });
+                })
+            }else{
+                ogTasks.executeActionFinal(actionName,ids,options,function () {
+                });
+            }
+        }else{
+            ogTasks.executeActionFinal(actionName,ids,options,function () {
+            })
+        }
+    } else if(actionName == 'cancel_work') {
+		if (confirm(lang('confirm discard work timeslot'))){
+			ogTasks.executeActionFinal(actionName,ids,options,function () {
+			});
+		}
+		
+	} else {
+        ogTasks.executeActionFinal(actionName,ids,options,function () {
+        })
+    }
+
+}
+
+ogTasks.executeActionFinal = function(actionName, ids, options,callback){
+
+    if (!ids)
+        var ids = this.getSelectedIds();
+
+    og.openLink(og.getUrl('task', 'multi_task_action'), {
+        method: 'POST',
+        post: {
+            "ids": ids.join(','),
+            "action" : actionName,
+            "options": options,
+			"req_channel": 'task list - ' + actionName
+        },
+        callback: function(success, data) {
+            if (success && ! data.errorCode && data.tasks) {
+                for (var i = 0; i < data.tasks.length; i++){
+                    var tdata = data.tasks[i];
+                    var task = ogTasksCache.addTasks(tdata);
+                    if (actionName == 'delete' || actionName == 'archive'){
+
+                        //update dependants
+                        if (actionName == 'delete'){
+                            ogTasks.updateDependantTasks(task.id,false);
+                        }
+
+                        //remove task from cache
+                        ogTasksCache.removeTask(task);
+                        ogTasks.removeTaskFromView(task);
+                    }else if (actionName == 'close_work'){
+                        ogTasks.UpdateTask(task.id, true);
+                    } else {
+						ogTasks.UpdateTask(task.id, false);
 					}
+                }
+                if (actionName == 'delete' || actionName == 'archive'){
+                    var task = data.tasks[data.tasks.length-1];
+                    ogTasks.drawElbows(task.parentId);
+                }
+
+                var topToolbar = Ext.getCmp('tasksPanelTopToolbarObject');
+                topToolbar.updateCheckedStatus();
+
+                ogTasks.refreshGroupsTotals();
+				if (typeof callback == 'function') {
+					callback(success);
 				}
-				
-				var topToolbar = Ext.getCmp('tasksPanelTopToolbarObject');
-				topToolbar.updateCheckedStatus();
-				
-				ogTasks.refreshGroupsTotals();
-			} else {
-			
-			}
-		},
-		scope: this
-	});
+            } else {
+				if (typeof callback == 'function') {
+					callback(false);
+				}
+            }
+        },
+        scope: this
+    });
 }
 
 ogTasks.setAllCheckedValue = function(checked){
 	for (var i = 0; i < this.Tasks.length; i++){
 		this.Tasks[i].isChecked = checked;
 	}
+}
+
+ogTasks.resetSelection = function() {
+	// reset selction of tasks in cache
+	for(var prop in ogTasksCache.Tasks) {
+		var task = ogTasksCache.Tasks[prop];
+		task.isChecked = false;
+	}
+	// reset selction of current tasks in list
+	ogTasks.setAllCheckedValue(false);
 }
 
 ogTasks.getSelectedIds = function(){
@@ -420,7 +520,7 @@ ogTasks.getTask = function(id){
 }
 
 ogTasks.removeTask = function(id){
-	rx__TasksDrag.removeTaskToMove(id);
+	
 	for (var i = 0; i < this.Tasks.length; i++) {
 		if (this.Tasks[i].id == id){
 			if (this.Tasks[i].milestoneId > 0) {
@@ -599,19 +699,6 @@ ogTasks.flattenTasks = function(tasks){
 		result = result.concat(tasks[i].flatten());
 	}
 	return result;
-}
-
-
-//Written for edit task view
-og.addTaskUserChanged = function(genid, user_id){
-	var ddUser = document.getElementById(genid + 'taskFormAssignedTo');
-	var chk = document.getElementById(genid + 'taskFormSendNotification');
-	if (ddUser && chk){
-		var user = ddUser.value;
-		chk.checked = (user > 0 && user != user_id);
-		var comp_obj = ogTasks.getCompany(user); // check if selected user is a user or a company
-		document.getElementById(genid + 'taskFormSendNotificationDiv').style.display = (user > 0 && !comp_obj) ? 'block':'none';
-	}
 }
 
 $(function (){

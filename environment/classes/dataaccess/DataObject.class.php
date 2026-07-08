@@ -11,16 +11,17 @@
   * This class supports PKs over multiple fields
   *
   * @package System
-  * @version 1.0.1
+  * @version 3.7
   * @author Ilija Studen <ilija.studen@gmail.com>
-  * @copyright 2005 by Ilija Studen
+  * @author Feng Office
+  * @copyright 2005 by Ilija Studen, Feng Office
   */
   abstract class DataObject {
     
   	/**
   	 * Indicates if the 'create' and 'update' timestamps will be set on the save() method.
   	 *
-  	 * @var unknown_type
+  	 * @var boolean
   	 */
   	private $mark_timestamps = true;
   	
@@ -144,7 +145,7 @@
   	* @access public
   	* @param array $errors
   	* @return boolean
-  	* @throws ModelValidationError
+  	* @throws Error ModelValidationError
   	*/
   	function validate($errors) {
   	  return true;
@@ -371,7 +372,7 @@
   	function getColumnValue($column_name, $default = null) {
   	  
   	  // Do we have it cached?
-  	  if(isset($this->column_values[$column_name])) return $this->column_values[$column_name];
+  	  if(is_string($column_name) && isset($this->column_values[$column_name])) return $this->column_values[$column_name];
   	  
   	  // We don't have it cached. Exists?
   	  if(!$this->columnExists($column_name) && $this->isLazyLoadColumn($column_name)) {
@@ -589,6 +590,15 @@
     		  if($this->mark_timestamps && $this->columnExists('updated_by_id') && !$this->isColumnModified('updated_by_id') && (logged_user() instanceof Contact)) {
     		    $this->setColumnValue('updated_by_id', logged_user()->getId());
     		  } // if
+    		  
+    		  // set object timezone attributes from the creator's timezone attributes
+    		  if($this->columnExists('timezone_id') && !$this->isColumnModified('timezone_id')) {
+    		  	$this->setColumnValue('timezone_id', logged_user()->getUserTimezoneId());
+    		  }
+    		  if($this->columnExists('timezone_value') && !$this->isColumnModified('timezone_value')) {
+    		  	$this->setColumnValue('timezone_value', logged_user()->getUserTimezoneValue());
+    		  }
+    		  
   		  } // if
   		  
   		  // Get auto increment column name

@@ -19,9 +19,13 @@
 if (isset($event) && $event instanceof ProjectEvent) {
 	$user_id = isset($_GET['user_id']) ? $_GET['user_id'] : logged_user()->getId();
 	
+	$tz_value = Timezones::getTimezoneOffsetToApply($event, logged_user());
+	
 	if (!$event->isTrashed()){
 		if ($event->canEdit(logged_user())) {
-			add_page_action(lang('edit'), "javascript:og.render_modal_form('', {c:'event', a:'edit', params: {id:".$event->getId().", view:'$view', user_id:'$user_id'}});", 'ico-edit', null, null, true);
+			$event_edit_action = "javascript:og.render_modal_form('', {c:'event', a:'edit', params: {id:".$event->getId().", view:'$view', user_id:'$user_id'}});";
+			Hook::fire("override_event_edit_action", $event, $event_edit_action);
+			add_page_action(lang('edit'), $event_edit_action, 'ico-edit', null, null, true);
 			
 			if (!$event->isArchived())
 				add_page_action(lang('archive'), "javascript:if(confirm(lang('confirm archive object'))) og.openLink('" . $event->getArchiveUrl() ."');", 'ico-archive-obj');
@@ -69,7 +73,7 @@ if (isset($event) && $event instanceof ProjectEvent) {
 
 	if(user_config_option('time_format_use_24')) $timeformat = 'G:i';
 	else $timeformat = 'g:i A';
-	$time = format_time($start_time, $timeformat);
+	$time = format_time($start_time, $timeformat, ($tz_value/3600));
 	
 	// organize duration of event
 	$duration = '';
@@ -88,7 +92,7 @@ if (isset($event) && $event instanceof ProjectEvent) {
 	}
 	elseif($typeofevent=="4") $duration = lang('CAL_NOT_SPECIFIED');
 	
-	$permission = ProjectEvents::findById($id)->canEdit(logged_user());
+	$permission = ProjectEvents::instance()->findById($id)->canEdit(logged_user());
 	
 ?>
 <div style="padding:7px;">
@@ -96,13 +100,22 @@ if (isset($event) && $event instanceof ProjectEvent) {
 
 <?php
 	
-	$title = lang($event->getObjectTypeName()) . ": " . format_descriptive_date($event->getStart()) . ' - ' . clean($event->getObjectName());
-	$description = $event->getTypeId() == 2 ? lang('CAL_FULL_DAY') : lang('CAL_TIME').": $time" ;
+	$origianl_timezone_time = "";
+	if ($event->getTypeId() == 1 && $event->getTimezoneId() != logged_user()->getUserTimezoneId()) {
+		$formatted_offset = Timezones::getFormattedDescription($event->getTimezoneId());
+		$original_offset = Timezones::getTimezoneOffset($event->getTimezoneId());
+		
+		$origianl_time = format_time($start_time, $timeformat, ($original_offset/3600));
+		$origianl_timezone_time .= "<br/>".lang('original time').": $origianl_time - " .lang("timezone").": $formatted_offset";
+	}
+
+	$title = lang($event->getObjectTypeName()) . ": " . format_descriptive_date($event->getStart(), ($tz_value/3600)) . ' - ' . clean($event->getObjectName());
+	$description = $event->getTypeId() == 2 ? lang('CAL_FULL_DAY') : lang('CAL_TIME').": $time $origianl_timezone_time" ;
   	tpl_assign('description', $description);
 
 	$att_form = '';
   	if (!$event->isNew() && !$event->isTrashed()) {
-		$event_inv = EventInvitations::findById(array('event_id' => $event->getId(), 'contact_id' => logged_user()->getId()));
+		$event_inv = EventInvitations::instance()->findById(array('event_id' => $event->getId(), 'contact_id' => logged_user()->getId()));
 		if ($event_inv != null) {
 			$event->addInvitation($event_inv);
 			$event_inv_state = $event_inv->getInvitationState();
@@ -128,7 +141,7 @@ if (isset($event) && $event instanceof ProjectEvent) {
 
 	$otherInvitationsTable = '';
 	if (!$event->isNew()) {
-		$otherInvitations = EventInvitations::findAll(array ('conditions' => 'event_id = ' . $event->getId()));
+		$otherInvitations = EventInvitations::instance()->findAll(array ('conditions' => 'event_id = ' . $event->getId()));
 		if (isset($otherInvitations) && is_array($otherInvitations)) {
 			$otherInvitationsTable .= '<div class="coInputMainBlock adminMainBlock" style="width:70%;">';
 			$otherInvitationsTable .= '<table style="width:100%;"><col width="50%" /><col width="50%" />';
@@ -136,7 +149,7 @@ if (isset($event) && $event instanceof ProjectEvent) {
 			$isAlt = false;
 			$cant = 0;
 			foreach ($otherInvitations as $inv) {
-				$inv_user = Contacts::findById($inv->getContactId());
+				$inv_user = Contacts::instance()->findById($inv->getContactId());
 				if ($inv_user instanceof Contact) {
 					if (can_access($inv_user, $event->getMembers(),ProjectEvents::instance()->getObjectTypeId(), ACCESS_LEVEL_READ)) {
 

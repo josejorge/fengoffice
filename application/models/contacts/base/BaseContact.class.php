@@ -461,7 +461,24 @@
     */
     function setPictureFile($value) {
       return $this->setColumnValue('picture_file', $value);
-    } // setPictureFile() 
+    } // setPictureFile()
+
+    
+    function getPictureFileSmall() {
+    	return $this->getColumnValue('picture_file_small');
+    }
+    
+    function setPictureFileSmall($value) {
+    	return $this->setColumnValue('picture_file_small', $value);
+    }
+    
+    function getPictureFileMedium() {
+    	return $this->getColumnValue('picture_file_medium');
+    }
+    
+    function setPictureFileMedium($value) {
+    	return $this->setColumnValue('picture_file_medium', $value);
+    }
     
     
     /**
@@ -603,6 +620,28 @@
     } // setDisabled()
     
     /**
+	 * Return value of 'token_disabled' field
+	 *
+	 * @access public
+	 * @param void
+	 * @return string
+	 */
+	function getTokenDisabled() {
+		return $this->getColumnValue('token_disabled');
+	} // getTokenDisabled()
+
+	/**
+	 * Set value of 'token_disabled' field
+	 *
+	 * @access public
+	 * @param string $value
+	 * @return boolean
+	 */
+	function setTokenDisabled($value) {
+		return $this->setColumnValue('token_disabled', $value);
+	} // setTokenDisabled()
+    
+    /**
     * Return value of 'default_billing_id' field
     *
     * @access public
@@ -611,6 +650,17 @@
     */
     function getDefaultBillingId() {
       return $this->getColumnValue('default_billing_id');
+    } // getDefaultBillingId()
+
+  /**
+   * Return value of 'default_billing_email' field
+   *
+   * @access public
+   * @param void
+   * @return boolean 
+   */
+    function getDefaultBillingEmail() {
+      return $this->getColumnValue('default_billing_email');
     } // getDefaultBillingId()
     
     
@@ -624,6 +674,14 @@
     function setDefaultBillingId($value) {
       return $this->setColumnValue('default_billing_id', $value);
     } // setDefaultBillingId()
+      
+    
+    function getUserTimezoneId() {
+    	return $this->getColumnValue('user_timezone_id');
+    }
+    function setUserTimezoneId($value) {
+    	return $this->setColumnValue('user_timezone_id', $value);
+    }
     
 	
     /**

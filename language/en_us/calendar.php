@@ -163,6 +163,7 @@
 	'range of events' => 'Event range',
 	'from date' => 'From',
 	'to date' => 'To',
+	'include tasks' => 'Include Tasks',
 	'success export calendar' => '{0} Events were exported.',
 	'calendar name desc' => 'Name for the calendar to export',
 	'calendar will be exported in icalendar format' => 'Calendar will be exported in iCalendar format.',
@@ -220,7 +221,8 @@
         'list calendar desc' => 'Please select the calendars from which you want to import your events',      
         'check your account' => 'Check your account',
         'success import calendar' => 'The events were successfully imported',
-      
+
+	  	'without title' => 'Without title',
         'all day event' => 'All day',
         'date' => 'Date',
         'time' => 'Time',

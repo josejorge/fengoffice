@@ -7,8 +7,7 @@
   * @author Ilija Studen <ilija.studen@gmail.com>
   */
 
-  return array(
-  
+return array(  
     // Empty, dnx et
     'object dnx' => 'The object does not exist',
     'no mail accounts set' => 'There are no email accounts through which to send an email, please create an email account first',
@@ -252,15 +251,15 @@
 	'success delete billing category' => 'Billing category deleted successfully',
 	'success edit billing category' => 'Billing category updated successfully',
   	'success assign user billing categories' => 'Billing categories were successfully assigned to users',
-  	'success update billing values' => 'Timeslot billing values updated succesfully: {0} entries modified.',
+  	'success update billing values' => 'Time entry billing values updated succesfully: {0} entries modified.',
     
     // Failures
-    'error edit timeslot' => 'Failed to save timeslot',
-  	'error delete timeslot' => 'Failed to delete the selected timeslot',
-  	'error add timeslot' => 'Failed to add timeslot',
-  	'error open timeslot' => 'Failed to open timeslot',
-  	'error close timeslot' => 'Failed to close timeslot',
-    'error start time after end time' => 'Failed to save timeslot: the start time must happen before the end time',
+    'error edit timeslot' => 'Failed to save time entry',
+  	'error delete timeslot' => 'Failed to delete the selected time entry',
+  	'error add timeslot' => 'Failed to add time entry',
+  	'error open timeslot' => 'Failed to open time entry',
+  	'error close timeslot' => 'Failed to close time entry',
+    'error start time after end time' => 'Failed to save time entry: the start time must happen before the end time',
     'error form validation' => 'Failed to save object because some of its properties are not valid',
     'error delete owner company' => 'Owner company can\'t be deleted',
     'error delete message' => 'Failed to delete selected note',
@@ -326,12 +325,14 @@
 
   	
     // Access or data errors
+    'incorrect date' => 'Incorrect date',
     'no access permissions' => 'You don\'t have permissions to access requested page',
     'invalid request' => 'Invalid request!',
     
     // Confirmation
     'confirm delete billing category' => "Are you sure you want to delete the selected billing category?",
-    'confirm cancel work timeslot' => "Are you sure you want to cancel the current timeslot?",
+    'confirm cancel work timeslot' => "Are you sure you want to cancel the current time entry?",
+    'confirm discard work timeslot' => 'Are you sure you want to discard the current time entry?',
     'confirm delete mail account' => 'Warning: All emails belonging to this account will be deleted as well, are you sure that you want to delete this mail account?',
     'confirm delete message' => 'Are you sure that you want to delete this note?',
     'confirm delete milestone' => 'Are you sure that you want to delete this milestone?',
@@ -668,6 +669,7 @@
   	'log read projectmilestones' => 'Viewed \'{0}\'',
   	'log read projectwebpages' => 'Viewed \'{0}\'',
   	'log read reports' => 'Viewed \'{0}\'',
+    'log read invoice' => 'Viewed \'{0}\'',
     
   
   	'error assign workspace' => 'Failed to assign template to workspace',
@@ -744,8 +746,8 @@
   	'the Projects' => 'the workspace',
   	'the ProjectTasks' => 'the task',
   	'the ProjectWebpages' => 'the webpage',
-  	'the Timeslots' => 'the timeslot',
-        'the Time' => 'the timeslot',
+  	'the Timeslots' => 'the time entry',
+        'the Time' => 'the time entry',
       
         'the user notification' => 'the user',
   	'the comment notification' => 'the comment',
@@ -759,8 +761,8 @@
   	'the task notification' => 'the task',
   	'the webpage notification' => 'the webpage',
     'the weblink notification' => 'the link',
-  	'the timeslot notification' => 'the timeslot',
-        'the time notification' => 'the timeslot',
+  	'the timeslot notification' => 'the time entry',
+        'the time notification' => 'the time entry',
   
   	'objects moved to member success' => 'The objects has been added to {0} successfully',
 	'object moved to member success' => 'The object has been added to {0} successfully',
@@ -774,6 +776,28 @@
   	'permissions successfully saved' => 'Permissions saved successfully',
   	
   	'cannot delete file' => 'You don\'t have permissions to delete file \'{0}\'',
-  ); // array
+    'config_start_calc'=>'Move the start date/time',
+    'config_end_calc'=>'Move the end date/time',
+    'config_dates_calc'=>'Move the opposite date (keep the same input time)',
+    'config_hours_calc'=>'Change the worked time',
+    'always_show_modal'=>'Ask me every time',
+    'How should we adjust'=>'How should we adjust?',
+    'Did you start sooner'=>'Did you start sooner?',
+    'Did you end later'=>'Did you end later?',
+    'You changed the length of your time record'=>'You changed the length of your time record',
+    'You changed a date in your time record'=>'You changed a date in your time record',
+    'Did you start later'=>'Did you start later?',
+    'Did you end sooner'=>'Did you end sooner?',
+
+    'What do you prefer' => 'What do you prefer?',
+
+    'Did you want change the date value'=>'Did you want change the date value?',
+    'Did you want change the time value'=>'Did you want change the time value?',
+
+    'Remember my selection' => 'Remember my selection',
+    'accept'=>'Accept',
+    'not classified here'=>'Not classified here',
+    
+); // array
 
 ?>

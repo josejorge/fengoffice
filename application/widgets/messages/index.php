@@ -7,6 +7,8 @@ if ($panel instanceof TabPanel && $panel->getEnabled()) {
 		"order" => "updated_on",
 		"order_dir" => "desc",
 		"start" => 0,
+		"fire_additional_data_hook" => false,
+		"count_results" => false,
 		"limit" => $limit
 	));
 	
@@ -21,7 +23,7 @@ if ($panel instanceof TabPanel && $panel->getEnabled()) {
 		foreach ($active_members as $member) {
 			$mnames[] = clean($member->getName());
 		}
-		$widget_title = lang('notes'). ' '. lang('in').' '. implode(", ", $mnames);
+		$widget_title = lang('notes');
 	}
 		
 	$total = $result->total;

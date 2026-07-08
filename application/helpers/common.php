@@ -140,4 +140,100 @@
 			return $result;
 		}
 	}
+	
+	function get_mysql_date_format_from_config_option() {
+		$date_format = user_config_option('date_format');
+		$mysql_date_format = "";
+		for($i=0; $i<strlen($date_format); $i++) {
+			$char = $date_format[$i];
+			if (in_array($char, array('d','m','Y'))) {
+				$mysql_date_format .= "%";
+			}
+			$mysql_date_format .= $char;
+		}
+		return $mysql_date_format;
+  }
+  
+  
+  /**
+  * Helper function to check if the value is a valid date,
+  * returns true or false
+  *
+  * @access public
+  * @param string or date
+  * @return boolean
+  */
+  function isDate($value) {
+    if (!$value) {
+        return false;
+    }
+    
+    try {
+        // use this function to get a DateTimeValue object depending on the date format defined in the user preferences
+        $dt_value = getDateValue($value);
+        
+        return $dt_value instanceof DateTimeValue;
+    } catch (Exception $e) {
+        return false;
+    }
+  }
+
+  /**
+  *  Helper function to generate monthly repetition date
+  * returns newly generated date
+  *
+  * @access public
+  * @return DateTimeValue
+  */
+  function getMonthlyRepetitionDate($task, $new_date, $original_date, $count){
+    $day = $original_date->format('d');
+    $new_month = $original_date->format('m') + ($count+1)*$task->getRepeatM();
+    $year = $original_date->format('Y');
+
+    // Check the month number, increase the year if needed
+    if($new_month%12 == 0) {
+        $year += (int)($new_month/12) - 1;
+        $month = 12;
+    } else {
+        $year += (int)($new_month/12);
+        $month = $new_month%12;
+    }
+
+    // Check if day exist(troubleshoot last day of the month)
+    while(!checkdate($month, $day, $year)) {
+        $day -=  1;
+    }
+
+    
+    // Set year, month and day
+    $new_date->setYear($year);
+    $new_date->setMonth($month);
+    $new_date->setDay($day);
+
+    return $new_date;
+}
+
+function moveElement(&$array, $a, $b) {
+    $p1 = array_splice($array, $a, 1);
+    $p2 = array_splice($array, 0, $b);
+    $array = array_merge($p2,$p1,$array);
+}
+
+
+function get_dashboard_breadcrumbs_options() {
+	
+	// common data to be used by every widget
+	$active_member_ids = active_context_members(false);
+	$widget_dimensions_csv = user_config_option('widget_dimensions');
+	$widget_dimensions = array_filter(explode(',', $widget_dimensions_csv));
+
+	$get_breadcrumbs_params = array(
+		'exclude_member_ids' => $active_member_ids,
+		'allowed_dimensions' => $widget_dimensions,
+		'use_restrictions' => true
+	);
+
+	return $get_breadcrumbs_params;
+}
+
 ?>

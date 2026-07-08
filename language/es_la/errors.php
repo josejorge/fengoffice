@@ -73,6 +73,7 @@
 	'mail account server required' => 'Servidor requerido, intente nuevamente',
 	'mail account password required' => 'Contraseña requerida, intente nuevamente',
 	'send mail error' => 'Ha ocurrido un error al enviar el correo.',
+	'sub emails invalid email' => 'La dirección de correo {1}, del tipo {0}, añadida en "Otros correos" no es válida',
 	'email address already exists' => 'Ya existe una cuenta creada con esa dirección de correo.',
 	'session expired error' => 'Sesión cerrada debido a su inactividad por tiempo prolongado',
 	'unimplemented type' => 'Tipo no implementado',
@@ -82,8 +83,7 @@
 	'task child of child error' => 'Una tarea (no) puede ser hija de una de sus herederas',
 	'chart title required' => 'Se requiere el título del gráfico.',
 	'chart title unique' => 'El título del gráfico debe ser único.',	
-	//'must choose at least one member of' => 'Debe seleccionar al menos un miembro de las dimensiones requeridas.',
-	'must choose at least one member of' => 'Debe seleccionar al menos un miembro de {0}.',
+	'must choose at least one member of' => 'Por favor seleccione un miembro de {0}.',
 	'must choose at least one member' => 'Debe seleccionar al menos un miembro donde guardar el objeto.',
 	'no context permissions to add' => 'No puede agregar {0} en {1}' ,
 	'you must select where to keep' => 'Debe seleccionar donde guardar {0}.',
@@ -118,8 +118,8 @@
 	'error cannot assign task to user' => '{0} no puede ser asignado a la tarea {1}.',
 	'account already being checked' => 'La cuenta ya se está verificando.',
 	'no files to compress' => 'No hay documentos para comprimir.',
-	'cant modify subscribers' => 'No es posible modificar los subscriptores',
-	'this object must belong to a ws to modify its subscribers' => 'El objeto debe pertenecer a un espacio de trabajo para poder modificar sus subscriptores.',
+	'cant modify subscribers' => 'No es posible modificar los suscriptores',
+	'this object must belong to a ws to modify its subscribers' => 'El objeto debe pertenecer a un espacio de trabajo para poder modificar sus suscriptores.',
 	'mailAccount dnx' => 'La cuenta de correo no existe',
 	'error add contact from user' => 'No se pudo crear la persona a partir del usuario.',
 	'zip not supported' => 'El servidor no soporta ZIP.',
@@ -150,4 +150,11 @@
 	
 	'failed to authenticate email account' => 'No se pudo autenticar la cuenta de correo',
 	'failed to authenticate email account desc' => 'La cuenta "{0}" no se pudo autenticar para enviar notificaciones. Por favor asegúrese de que la contraseña de la cuenta sea la correcta.',
+	'must choose at least one workspace error' => 'Debe elegir al menos un espacio de trabajo donde colocar el objeto.',
+	
+	'you cant add member without security permissions' => 'No se puede agregar {0} sin especificar su ubicación porque usted no puede asignar permisos. Por favor seleccione donde ubicar {0} para que los permisos puedan ser heredados.',
+        'token external key value required' => 'Key es requerido',
+        'token external name value required' => 'Name es requerido',
+		'token external type value required' => 'Type es requerido',
+		'you dont have permissions to add this object in members' => 'Usted no tiene permisos para agregar este {0} en {1}'
 ); ?>

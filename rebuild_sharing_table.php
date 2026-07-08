@@ -17,19 +17,27 @@ DB::execute("CREATE TABLE IF NOT EXISTS `fixed_objects` (
 ) ENGINE = InnoDB;");
 $drop_tmp_table = true;
 
-$object_ids = Objects::instance()->findAll(array('id' => true, 'conditions' => 'id NOT IN (SELECT object_id FROM fixed_objects)'));
+//$object_ids = Objects::instance()->findAll(array('columns' => array('id','object_type_id'), 'conditions' => 'id NOT IN (SELECT object_id FROM fixed_objects)'));
+
+$objects =  DB::executeAll("
+		SELECT id, object_type_id, member_id 
+		FROM ".TABLE_PREFIX."objects o
+			LEFT JOIN ".TABLE_PREFIX."object_members om ON o.id = om.object_id
+		WHERE id NOT IN (SELECT object_id FROM fixed_objects)
+		GROUP BY o.id
+		
+		");
 
 $processed_objects = array();
 $i = 0;
 $msg = "";
-echo "\nObjects to process: " . count($object_ids) . "\n-----------------------------------------------------------------";
+echo "\nObjects to process: " . count($objects) . "\n-----------------------------------------------------------------";
 
-foreach ($object_ids as $object_id) {
-	$object = Objects::findObject($object_id);
-	if ($object instanceof ContentDataObject) {
-		$object->addToSharingTable();
-	}
-	$processed_objects[] = $object_id;
+foreach ($objects as $key => $object) {	
+	ContentDataObjects::addObjToSharingTable($object['id'],$object['object_type_id'],!is_null($object['member_id']));
+			
+	$processed_objects[] = $object['id'];
+	
 	$i++;
 	$memory_limit_exceeded = memory_get_usage(true) > SCRIPT_MEMORY_LIMIT;
 	

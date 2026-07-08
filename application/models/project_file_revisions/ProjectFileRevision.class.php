@@ -49,7 +49,7 @@ class ProjectFileRevision extends BaseProjectFileRevision {
 	 */
 	function getFile() {
 		if(is_null($this->file)) {
-			$this->file = ProjectFiles::findById($this->getFileId());
+			$this->file = ProjectFiles::instance()->findById($this->getFileId());
 		} // if
 		return $this->file;
 	} // getFile
@@ -63,7 +63,7 @@ class ProjectFileRevision extends BaseProjectFileRevision {
 	 */
 	function getFileType() {
 		if(is_null($this->file_type)) {
-			$this->file_type = FileTypes::findById($this->getFileTypeId());
+			$this->file_type = FileTypes::instance()->findById($this->getFileTypeId());
 		} // if
 		return $this->file_type;
 	} // getFileType
@@ -105,7 +105,7 @@ class ProjectFileRevision extends BaseProjectFileRevision {
 			// Simple search for .txt and .html documents
 			if ($file_type->getIsSearchable()){
 				try {
-					$content = strip_tags($this->getFileContent()); // Remove unnecesary html tags
+					$content = $this->getFileContent();
 					if(strlen($content) > MAX_SEARCHABLE_FILE_SIZE) {
 						$content = substr($content, 0, MAX_SEARCHABLE_FILE_SIZE);
 					}
@@ -308,7 +308,7 @@ class ProjectFileRevision extends BaseProjectFileRevision {
 	// ---------------------------------------------------
 
 	
-	function canAdd(Contact $user, $context, &$notAllowedMember = ''){
+	static function canAdd(Contact $user, $context, &$notAllowedMember = ''){
 		return can_add($user, $context, ProjectFileRevisions::instance()->getObjectTypeId(), $notAllowedMember);
 	}
 	
@@ -320,7 +320,8 @@ class ProjectFileRevision extends BaseProjectFileRevision {
 	 * @return boolean
 	 */
 	function canView(Contact $user) {
-		return can_read($user, $this->getMembers(), $this->getObjectTypeId());
+		$file = $this->getFile();
+		return can_read($user, $file->getMembers(), $file->getObjectTypeId());
 	} // canView
 
 	
@@ -384,7 +385,7 @@ class ProjectFileRevision extends BaseProjectFileRevision {
 	 * @param array $errors
 	 * @return null
 	 */
-	function validate(&$errors) {
+	function validate($errors) {
 		if(!$this->validatePresenceOf('file_id')) {
 			$errors[] = lang('file revision file_id required');
 		} // if
@@ -421,6 +422,8 @@ class ProjectFileRevision extends BaseProjectFileRevision {
 		}
 		try {
 			FileRepository::deleteFile($this->getRepositoryId());
+		} catch (FileNotInRepositoryError $ex) {
+			Logger::log($ex->getMessage());
 		} catch (Exception $ex) {
 			Logger::log($ex->getMessage());
 		}

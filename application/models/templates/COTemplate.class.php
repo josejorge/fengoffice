@@ -2,9 +2,8 @@
 
 /**
  * COTemplate class
- * Generated on Sat, 04 Mar 2006 12:50:11 +0100 by DataObject generation tool
  *
- * @author Ignacio de Soto <ignacio.desoto@gmail.com>
+ * @author FengOffice
  */
 class COTemplate extends BaseCOTemplate {
 
@@ -42,6 +41,7 @@ class COTemplate extends BaseCOTemplate {
 	 */
 	function addObject($object, $additional_attributes = array(), $go_deep = true) {
 		//if ($this->hasObject($object)) return;
+		if (!$object instanceof ContentDataObject) return 0;
 		
 		//if object is a ProjectTask
 		if ($object instanceof ProjectTask) {
@@ -71,7 +71,6 @@ class COTemplate extends BaseCOTemplate {
 				
 			$object->save();
 		}
-		
 			
 		// the object is already a template or can't be one, use it as it is
 		$template = $object;
@@ -90,7 +89,7 @@ class COTemplate extends BaseCOTemplate {
 	// ---------------------------------------------------
 
 	
-	function canAdd(Contact $user, $context, &$notAllowedMember = ''){
+	static function canAdd(Contact $user, $context, &$notAllowedMember = ''){
 		return 1 ;
 		//FIXME: return can_manage_templates($user) && can_add($user, $context, COTemplates::instance()->getObjectTypeId());
 	}
@@ -188,7 +187,7 @@ class COTemplate extends BaseCOTemplate {
 	 * @param array $errors
 	 * @return boolean
 	 */
-	function validate(&$errors) {
+	function validate($errors) {
 		if(!$this->validatePresenceOf('name')) $errors[] = lang('template name required');
 	} // validate
 

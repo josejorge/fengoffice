@@ -9,10 +9,10 @@
 //*		Draw add new task form
 //************************************
 
-ogTasks.drawAddNewTaskForm = function(group_id, parent_id, level, position){
+ogTasks.drawAddNewTaskForm = function(group_id, parent_id, level, position, reload, req_channel){
 	var additionalParams = {};
 	var toolbar = Ext.getCmp('tasksPanelBottomToolbarObject');
-	if (toolbar.filterNamesCompaniesCombo.isVisible()){
+	if (toolbar && toolbar.filterNamesCompaniesCombo.isVisible()){
 		var value = toolbar.filterNamesCompaniesCombo.getValue();
 		if (value) {
 			additionalParams.assigned_to_contact_id = value;
@@ -21,104 +21,22 @@ ogTasks.drawAddNewTaskForm = function(group_id, parent_id, level, position){
 	if (parent_id > 0)
 		additionalParams.parent_id = parent_id;
 	
+	if (reload > 0)
+		additionalParams.reload = 1;
+
+	if (req_channel) {
+		additionalParams.req_channel = req_channel;
+	}
+
 	og.render_modal_form('', {c:'task', a:'add_task', params: additionalParams});
 	return;
-	
-	var topToolbar = Ext.getCmp('tasksPanelTopToolbarObject');
-	var bottomToolbar = Ext.getCmp('tasksPanelBottomToolbarObject');
-	var filters = bottomToolbar.getFilters();
-	var displayCriteria = bottomToolbar.getDisplayCriteria();
-	var drawOptions = topToolbar.getDrawOptions();
-	
-	if (parent_id > 0)
-		var parentTask = ogTasks.getTask(parent_id);
-	
-	if (displayCriteria.group_by == 'milestone' && group_id != 'unclassified'){
-		var milestone_id = group_id;
-	} else if (parentTask && parentTask.milestoneId > 0){
-		var milestone_id = parentTask.milestoneId;
-	} else if (filters.filter == 'milestone') {
-		var milestone_id = Ext.getCmp('ogTasksFilterMilestonesCombo').getValue();
-	} else {
-		var milestone_id = 0;
-	}
-	
-	var assignedToValue = null;
-	if (displayCriteria.group_by == 'assigned_to' && group_id != 'unclassified'){
-		assignedToValue = group_id;
-	} else if(parentTask && parentTask.assignedToId){
-		assignedToValue = parentTask.assignedToId;
-	} else if (filters.filter == 'assigned_to') {
-		assignedToValue = filters.fval;
-	}
-	
-	var member_id = null;
-	if (displayCriteria.group_by.indexOf('dimension_') == 0) {
-		var dim_id = displayCriteria.group_by.replace('dimension_', '');
-		member_id = group_id;
-	}
-	
-	
-	var priority = 200;
-	if (displayCriteria.group_by == 'priority' && group_id != 'unclassified'){
-		priority = group_id;
-	}
-	
-	if (parent_id > 0)
-		var containerName = 'ogTasksPanelTask' + parent_id + 'G' + group_id;
-	else
-		var containerName = 'ogTasksPanelGroup' + group_id;
-	
-	this.drawTaskForm(containerName, {
-		parentId: parent_id,
-		milestoneId: milestone_id,
-		member_id: member_id,
-		title: '',
-		description: '',
-		priority: priority,
-		dueDate: '',
-		startDate: '',
-		assignedTo: assignedToValue,
-		taskId: 0,
-		time_estimated: 0,
-		multiAssignment: 0,
-		isEdit: false,
-		position: position
-	});
-	
-	if(og.config.wysiwyg_tasks){
-		var height = $("#tasks_quick_add_selectors").height();
-		height = "auto";
-		loadCKeditor(0,height);
-	}
 }
 
 ogTasks.drawEditTaskForm = function(task_id, group_id){
 	var task = this.getTask(task_id);
 	var containerName = 'ogTasksPanelTask' + task.id + 'G' + group_id;
 	if (task){
-		og.render_modal_form('', {c:'task', a:'edit_task', params: {id:task.id, use_ajx:1}});
-	}
-}
-
-ogTasks.performDrawEditTaskForm = function(containerName, task) {
-	this.drawTaskForm(containerName, {
-		title: task.title,
-		description: task.description,
-		priority: task.priority,
-		members: task.members,
-		dueDate: task.dueDate,
-		startDate: task.startDate,
-		assignedTo: task.assignedToId,
-		taskId: task.id,
-		time_estimated: task.TimeEstimate,
-		multiAssignment: task.multiAssignment,
-		isEdit: true
-	});
-	if(og.config.wysiwyg_tasks){
-		var height = $("#tasks_quick_add_selectors").height();
-		height = "auto";
-		loadCKeditor(task.id, height);
+		og.render_modal_form('', {c:'task', a:'edit_task', params: {id:task.id, use_ajx:1, req_channel:'task list - line edit task'}});
 	}
 }
 
@@ -137,6 +55,31 @@ ogTasks.checkEnterPress = function (e,id)
 		return false;
 	}
 	return true;
+}
+
+ogTasks.drawAddNewTaskFromData = function(container_id, req_channel){
+	if (!req_channel) req_channel = 'task list - grid add task';
+
+	var task = {
+		req_channel: req_channel,
+		name:'',
+        assigned_to_contact_id: 0
+	};
+	$("#"+container_id+" :input").each(function(){
+		var input = $(this);
+		task[input.attr("name")]=input.val();
+		input.val("");
+	});
+
+    var toolbar = Ext.getCmp('tasksPanelBottomToolbarObject');
+    if (toolbar && toolbar.filterNamesCompaniesCombo.isVisible()){
+        var value = toolbar.filterNamesCompaniesCombo.getValue();
+        if (value) {
+            task['assigned_to_contact_id'] = value;
+        }
+    }
+	
+	og.render_modal_form('', {c:'task', a:'add_task', params: task});
 }
 
 ogTasks.drawTaskForm = function(container_id, data){
@@ -438,7 +381,7 @@ ogTasks.drawTaskForm = function(container_id, data){
 		
 	}
 	
-	var task_cp_vals = ogTasks.custom_properties[data.taskId];
+	var task_cp_vals = null;
 	
 	if (task_cp_vals) {
 		var extra_params = {};
@@ -835,9 +778,27 @@ ogTasks.drawTaskRowAfterEdit = function(data) {
 	}
 }
 
+ogTasks.drawTasksRowsAfterAddEdit = function(data) {
+	if (!data || !data.tasks) return;
+	for ( var j = 0; j < data.tasks.length; j++) {
+		ogTasks.drawTaskRowAfterEdit({'task':data.tasks[j]});
+	}
+}
 
+ogTasks.sortAssignedCombo = function(a, b) {
+	var namea = a[1] ? a[1].toLowerCase() : '';
+	var nameb = b[1] ? b[1].toLowerCase() : '';
+	if (namea < nameb) return -1;
+	if (namea > nameb) return 1;
+	return 0;
+}
 
-ogTasks.buildAssignedToComboStore = function(companies, only_me, groups) {
+ogTasks.buildAssignedToComboStore = function(companies, only_me, groups, for_template_task) {
+	
+	if (!for_template_task && typeof(og.replace_build_assigned_combo_store) == 'function') {
+		return og.replace_build_assigned_combo_store.call(null, companies, only_me, groups);
+	}
+	
 	var usersStore = [];
 	var comp_array = [];
 	var cantU = 0;
@@ -879,13 +840,7 @@ ogTasks.buildAssignedToComboStore = function(companies, only_me, groups) {
 		// sort user list
 		var me = usersStore.shift();
 		if (!only_me) var dont_assign = usersStore.shift();
-		usersStore.sort(function(a, b){
-			var namea = a[1].toLowerCase();
-			var nameb = b[1].toLowerCase();
-			if (namea < nameb) return -1;
-			if (namea > nameb) return 1;
-			return 0;
-		});
+		usersStore.sort(ogTasks.sortAssignedCombo);
 		if (!only_me) usersStore.unshift(dont_assign);
 		usersStore.unshift(me);
 		
@@ -1109,5 +1064,25 @@ ogTasks.undoRemoveSubtasks = function(genid) {
 	var inputs = $('.'+ genid +'.subtask-inputs-container input.deleted-hf');
 	for (var i=0; i<inputs.length; i++) {
 		$(inputs[i]).val(0);
+	}
+}
+
+
+
+// if no start date defined, then set it to repeat by due date if it is defined
+og.init_rep_by_selectbox = function(genid) {
+	var sd = Ext.getCmp(genid + "start_date").getValue();
+	var dd = Ext.getCmp(genid + "due_date").getValue();
+	if (!dd || !sd) {
+		if (!dd && !sd) {
+			$("#" + genid + "_rep_by_warning").show();
+		} else {
+			$("#" + genid + "_rep_by_warning").hide();
+			if (!dd) {
+				$("#" + genid + "_rep_by").val("start_date");
+			} else if (!sd) {
+				$("#" + genid + "_rep_by").val('due_date');
+			}
+		}
 	}
 }

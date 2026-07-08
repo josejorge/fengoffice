@@ -6,6 +6,7 @@ og.loadReportingFlags = function(){
 	modified = false;
 	selectedObjTypeIndex = -1;
 	fieldValues = {};
+	og.last_report_group_id = 0;
 };
 
 og.enterCondition = function(id) {
@@ -19,7 +20,7 @@ og.leaveCondition = function(id) {
 	$("#delete"+id).css('opacity', '0.6');
 };
 
-og.reportObjectTypeChanged = function(genid, order_by, order_by_asc, cols){
+og.reportObjectTypeChanged = function(genid, order_by, order_by_asc, cols, execute_callbacks){
 	var objectTypeSel = document.getElementById('objectTypeSel');
 	if(modified){
 		if(!confirm(lang('confirm discard changes'))){
@@ -40,12 +41,24 @@ og.reportObjectTypeChanged = function(genid, order_by, order_by_asc, cols){
 			return;
 		}
 		
-		document.getElementById('report[report_object_type_id]').value = type;
+		var type_el = document.getElementById(genid + 'report[report_object_type_id]');
+		if (type_el) type_el.value = type;
 		
 		Ext.get('columnListContainer').load({
 			url: og.getUrl('reporting', 'get_object_column_list', {object_type: type, columns:cols, orderby:order_by, orderbyasc:order_by_asc, genid:genid}),
 			scripts: true
 		});
+		
+		if (typeof(execute_callbacks) == 'undefined') execute_callbacks = true;
+		
+		if (execute_callbacks && og.after_report_object_type_change_functions) {
+			for (var i=0; i<og.after_report_object_type_change_functions.length; i++) {
+				var fn = og.after_report_object_type_change_functions[i];
+				if (typeof(fn) == "function") {
+					fn.call(null, type, genid);
+				}
+			}
+		}
 
 		document.getElementById(genid + 'MainDiv').style.display = '';
 	}
@@ -62,13 +75,17 @@ og.reportTask = function(genid, order_by, order_by_asc, cols){
 	}
 };
 
-og.addCondition = function(genid, id, cpId, fieldName, condition, value, is_parametrizable, is_for_time_report){ //param is_for_time_report only used for time reporting
-	var time_report = false;	
-	if (is_for_time_report!=null)
-		time_report = true;
-	if(!time_report){		
-		var get_object_fields = 'get_object_fields';
-		var type = document.getElementById('report[report_object_type_id]').value;
+og.addCondition = function(genid, id, cpId, fieldName, condition, value, is_parametrizable, is_for_time_report, only_cps, hide_param_field, group_id){ //param is_for_time_report only used for time reporting
+	var time_report = is_for_time_report;	
+	var type_el = document.getElementById(genid + 'report[report_object_type_id]');
+	
+	if(!time_report){
+		var get_object_fields = only_cps ? 'get_object_fields_custom_properties' : 'get_object_fields';
+		if (!type_el) {
+			alert(lang('object type not selected'));
+	  		return;
+		}
+		var type = type_el.value;
 		if(type == ""){
 	  		alert(lang('object type not selected'));
 	  		return;
@@ -77,23 +94,42 @@ og.addCondition = function(genid, id, cpId, fieldName, condition, value, is_para
 		var get_object_fields = 'get_object_fields_custom_properties';
 		var type = "ProjectTasks";
 	}
-
+	
 	var condDiv = Ext.getDom(genid);
-	var count = condDiv.childNodes.length;
-	var classname = "";
-	if (count % 2 != 0) {
-		classname = "odd";
+	
+	var use_condition_groups = true;
+	if (typeof(group_id) == 'undefined') {
+		use_condition_groups = false;
 	}
+	
+	if (group_id=='0') {
+		og.last_report_group_id++;
+		group_id = og.last_report_group_id;
+	} else {
+		if (og.last_report_group_id < group_id) {
+			og.last_report_group_id = group_id;
+		}
+	}
+
+	var condGroup = document.getElementById(genid + '_group_' + group_id);
+	var addGroupWrapper = true;
+	if (condGroup) addGroupWrapper = false;
+	
+	var count = $("#"+genid+" .condition-div").length;
+	var classname = "condition-div";
+	
 	var style = 'style="width:130px;padding-right:10px;"';
 	var table = '<table onmouseover="og.enterCondition(' + count + ')" onmouseout="og.leaveCondition(' + count + ')"><tr>' +
-	'<td><input id="conditions[' + count + '][id]" name="conditions[' + count + '][id]" type="hidden" value="{0}"/></td>' +
+	'<td><input id="conditions[' + count + '][id]" name="conditions[' + count + '][id]" type="hidden" value="{0}"/>' +
+	(use_condition_groups ? '<input type="hidden" name="conditions[' + count + '][group_id]" value="' + group_id + '" />' : '') +
+	'</td>' +
 	'<td><input id="conditions[' + count + '][deleted]" name="conditions[' + count + '][deleted]" type="hidden" value="0"/></td>' +
 	'<td ' + style + ' id="tdFields' + count + '"></td>' +
 	'<td ' + style + ' id="tdConditions' + count + '"></td>' +
 	'<td ' + style + ' id="tdValue' + count + '"><b>' + lang('value') + '</b>:<br/>' +
 	'<input type="text" style="width:100px;" id="conditions[' + count + '][value]" name="conditions[' + count + '][value]" name="conditions[' + count + '][value]" value="{1}" ></td>';	
 	
-	if (!time_report) {
+	if (!time_report && !hide_param_field) {
 		table = table + '<td ' + style + '><label for="conditions[' + count + '][is_parametrizable]">' + lang('parametrizable') + '</label>' + 
 		'<input type="checkbox" class="checkbox" onclick="og.changeParametrizable(' + count + ')" id="conditions[' + count + '][is_parametrizable]" name="conditions[' + count + '][is_parametrizable]" {2}></td>';	
 	}
@@ -102,21 +138,46 @@ og.addCondition = function(genid, id, cpId, fieldName, condition, value, is_para
 	'<td id="tdDelete' + count + '" style="display:none;"><b>' + lang('condition deleted') +
 	'</b><a class="internalLink" href="javascript:og.undoDeleteCondition(' + count + ',\'' + genid + '\')">&nbsp;(' + lang('undo') + ')</a></td>' +
   	'</tr></table>';
+	
+	// add "OR" condition link
+	if (use_condition_groups) {
+		$('#'+genid+'_glink_'+group_id).remove();
+		var or_link_onclick = "og.addCondition('"+genid+"', 0, 0, '', '', '', false, null, null, null, '"+group_id+"');this.remove();";
+		table += '<div style="margin-top:5px">'+
+			'<a href="#" id="'+genid+'_glink_'+group_id+'" class="link-ico ico-add" onclick="'+or_link_onclick+'">'+ lang('add or condition') +'</a></div>';
+	}
 
 	table = String.format(table, id, value, (is_parametrizable == 1 ? "checked" : ""));
+	
+	if (use_condition_groups && addGroupWrapper) {
+		var condGroup = document.createElement('div');
+		condGroup.id = genid + '_group_' + group_id;
+		condGroup.innerHTML = '';
+		condGroup.className = 'group-of-conditions';
+		if (condDiv.innerHTML != '') $(condDiv).append('<div class="bold">'+lang('and').toUpperCase()+'</div>');
+		condDiv.appendChild(condGroup);
+	}
 
 	var newCondition = document.createElement('div');
 	newCondition.id = "Condition" + count;
 	newCondition.style.padding = "5px";
 	newCondition.className = classname;
 	newCondition.innerHTML = table;
-	condDiv.appendChild(newCondition);
+	if (use_condition_groups && condGroup) {
+		if (condGroup.innerHTML != '') $(condGroup).append('<div class="bold" style="padding-left: 5px;">'+lang('or').toUpperCase()+'</div>');
+		condGroup.appendChild(newCondition);
+	} else {
+		condDiv.appendChild(newCondition);
+	}
+	
+	
 	og.openLink(og.getUrl('reporting', get_object_fields, {object_type: type, noaddcol:1}), {
 		callback: function(success, data) {
 			if (success) {
 				var disabled = ((cpId > 0 || fieldName != '') ? 'disabled' : '');
 				var fields = '<label for="conditions[' + count + '][custom_property_id]">' + lang('field') + '</label>' + 
-				'<select class="reportConditionDD" onchange="og.fieldChanged(' + count + ', \'\', \'\')" id="conditions[' + count + '][custom_property_id]" name="conditions[' + count + '][custom_property_id]" ' + disabled + ' >';					
+					'<select class="reportConditionDD" onchange="og.fieldChanged(' + count + ', \'\', \'\', \''+genid+'\', \''+type+'\')" id="conditions[' + count + '][custom_property_id]" name="conditions[' + count + '][custom_property_id]" ' + disabled + ' >';					
+				
 				for(var i=0; i < data.fields.length; i++){
 					var field = data.fields[i];
 					if(id > 0 && (field.id != cpId && fieldName != field.id)) continue;
@@ -136,8 +197,9 @@ og.addCondition = function(genid, id, cpId, fieldName, condition, value, is_para
 				if(cpId > 0){
 					fields += '<input type="hidden" name="conditions[' + count + '][custom_property_id]" value="' + cpId + '">';
 				}
-				document.getElementById('tdFields' + count).innerHTML = fields;
-				og.fieldChanged(count, (condition != "" ? condition : ""), (value != "" ? value : ""));				
+				
+				$("#" + genid + " #tdFields" + count).html(fields);
+				og.fieldChanged(count, (condition != "" ? condition : ""), (value != "" ? value : ""), genid, type);
 			}
 		},
 		scope: this
@@ -148,19 +210,18 @@ og.addCondition = function(genid, id, cpId, fieldName, condition, value, is_para
 };
 
 og.deleteCondition = function(id, genid){
-	var conditionDiv = document.getElementById('Condition' + id);
-	conditionDiv.style.background = '#FFDEAD';
-	document.getElementById('tdDelete' + id).style.display = '';
-	document.getElementById('conditions[' + id + '][deleted]').value = 1;
-	$("#delete"+id).hide();
+	$("#" + genid + " #Condition" + id).css('background', '#FFDEAD');
+	$("#" + genid + " #tdDelete" + id).css('display', '');
+	$("#" + genid + " [name='conditions[" + id + "][deleted]']").val(1);
+	$("#" + genid + " #delete" + id).hide();
 	modified = true;
 };
 
 og.undoDeleteCondition = function(id, genid){
-	document.getElementById('tdDelete' + id).style.display = 'none';
-	document.getElementById('conditions[' + id + '][deleted]').value = 0;
-	$("#delete"+id).show();
-	var conditionDiv = Ext.getDom(genid);
+	$("#" + genid + " #tdDelete" + id).css('display', 'none');
+	$("#" + genid + " [name='conditions[" + id + "][deleted]']").val(0);
+	$("#" + genid + " #delete" + id).show();
+	/*var conditionDiv = Ext.getDom(genid);
 	for(var i=0; i < conditionDiv.childNodes.length; i++){
 		var nextCond = conditionDiv.childNodes.item(i);
 		if(nextCond.id == ('Condition' + id)){
@@ -172,31 +233,34 @@ og.undoDeleteCondition = function(id, genid){
 	  		}
 	  		return;
 		}
-	}
+	}*/
 };
 
-og.fieldChanged = function(id, condition, value){
-	var fields = document.getElementById('conditions[' + id + '][custom_property_id]');
+og.fieldChanged = function(id, condition, value, genid, object_type_id){
+	var ot = og.objectTypes[object_type_id];
+	var fields = $("#" + genid + " [name='conditions[" + id + "][custom_property_id]']");
+	fields = fields[0];
 	var selField = fields.selectedIndex;
 	if(selField != -1){
 		var fieldType = fields[selField].className;
 		var type_and_name = '<input type="hidden" name="conditions[' + id + '][field_name]" value="' + fields[selField].value + '"/>' +
-		'<input type="hidden" name="conditions[' + id + '][field_type]" value="' + fieldType + '"/>'; 
+			'<input type="hidden" name="conditions[' + id + '][field_type]" value="' + fieldType + '"/>'; 
 		var conditions = '<label for="conditions[' + id + '][condition]">' + lang('condition') + '</label><select class="reportConditionDD" id="conditions[' + id + '][condition]" name="conditions[' + id + '][condition]">';
 		var textValueField = '<label for="conditions[' + id + '][value]">' + lang('value') + '</label><input type="text" style="width:100px;" id="conditions[' + id + '][value]" name="conditions[' + id + '][value]" value="' + value + '"/>' + type_and_name;
-		var dateValueField = '<label for="containerConditions[' + id + '][value]">' + lang('value') + '</label>' + '<span id="containerConditions[' + id + '][value]"></span>' + type_and_name; 
+		var dateValueField = '<label for="containerConditions[' + id + '][value]">' + lang('value') + '</label>' + '<span id="'+genid+'containerConditions[' + id + '][value]"></span>' + type_and_name; 
 		
 		if(fieldType == "text" || fieldType == "memo"){
-			document.getElementById('tdValue' + id).innerHTML = textValueField;
+			$("#" + genid + " #tdValue" + id).html(textValueField);
 			conditions += '<option value="like">' + lang('like') + '</option>';
 			conditions += '<option value="not like">' + lang('not like') + '</option>';
 			conditions += '<option value="=">' + lang('equals') + '</option>';
 			conditions += '<option value="<>">' + lang('not equals') + '</option>';
 			conditions += '<option value="%">' + lang('ends with') + '</option>';
 			conditions += '</select>';
-			document.getElementById('tdConditions' + id).innerHTML = conditions;
+			$("#" + genid + " #tdConditions" + id).html(conditions);
+			
 		}else if(fieldType == "numeric"){
-			document.getElementById('tdValue' + id).innerHTML = textValueField;
+			$("#" + genid + " #tdValue" + id).html(textValueField);
 			conditions += '<option value=">">&gt;</option>';
 			conditions += '<option value=">=">&ge;</option>';
 			conditions += '<option value="<">&lt;</option>';
@@ -205,18 +269,21 @@ og.fieldChanged = function(id, condition, value){
 			conditions += '<option value="<>"><></option>';
 			conditions += '<option value="%">' + lang('ends with') + '</option>';
 			conditions += '</select>';
-			document.getElementById('tdConditions' + id).innerHTML = conditions;
+			$("#" + genid + " #tdConditions" + id).html(conditions);
+			
 		}else if(fieldType == "boolean"){
 			var values = '<b>' + lang('value') + '</b>:<br/><select class="reportConditionDD" id="conditions[' + id + '][value]" name="conditions[' + id + '][value]">';
+			values += '<option value="0"' + (value == false ? "selected" : "") + '></option>';
 			values += '<option value="1" ' + (value != "" && value == true ? "selected" : "") + '>' + lang('true') + '</option>';
-			values += '<option value="0"' + (value == false ? "selected" : "") + '>' + lang('false') + '</option>';
+			values += '<option value="-1"' + (value == -1 ? "selected" : "") + '>' + lang('false') + '</option>';
 			values += '</select>' + type_and_name;
-			document.getElementById('tdValue' + id).innerHTML = values;
+			$("#" + genid + " #tdValue" + id).html(values);
 			conditions += '<option value="=">' + lang('equals') + '</option>';
 			conditions += '</select>';
-			document.getElementById('tdConditions' + id).innerHTML = conditions;
-		} else if(fieldType == "date"){
-			document.getElementById('tdValue' + id).innerHTML = dateValueField;
+			$("#" + genid + " #tdConditions" + id).html(conditions);
+			
+		} else if(fieldType == "date" || fieldType == "datetime"){
+			$("#" + genid + " #tdValue" + id).html(dateValueField);
 			conditions += '<option value=">">&gt;</option>';
 			conditions += '<option value=">=">&ge;</option>';
 			conditions += '<option value="<">&lt;</option>';
@@ -224,45 +291,76 @@ og.fieldChanged = function(id, condition, value){
 			conditions += '<option value="=">=</option>';
 			conditions += '<option value="<>"><></option>';
 			conditions += '</select>';
-			document.getElementById('tdConditions' + id).innerHTML = conditions;
+			$("#" + genid + " #tdConditions" + id).html(conditions);
 			
 			var dateCond = new og.DateField({
-				renderTo:'containerConditions[' + id + '][value]',
+				renderTo: genid + 'containerConditions[' + id + '][value]',
 				name: 'conditions[' + id + '][value]',
 				id: 'conditions[' + id + '][value]',
 				value: Ext.util.Format.date(value, og.preferences['date_format'])
 			});
+			
 		}else if(fieldType == "list"){
 			var valuesList = fieldValues[id][selField].split(',');
 			var listValueField = '<label for="conditions[' + id + '][value]">' + lang('value') + '</label><select class="reportConditionDD" id="conditions[' + id + '][value]" name="conditions[' + id + '][value]">';
+			listValueField += '<option value="">-- ' + lang('none') + ' --</option>';
 			for(var i=0; i < valuesList.length; i++){
 				listValueField += '<option ' + (valuesList[i] == value ? "selected" : "") + '>' + valuesList[i] + '</option>';
 			}
 			listValueField += '</select>' + type_and_name; 
-			document.getElementById('tdValue' + id).innerHTML = listValueField;
+			$("#" + genid + " #tdValue" + id).html(listValueField);
 			conditions += '<option value="=">=</option>';
 			conditions += '<option value="<>"><></option>';
 			conditions += '</select>';
-			document.getElementById('tdConditions' + id).innerHTML = conditions;
-		}else if(fieldType == "external"){
+			$("#" + genid + " #tdConditions" + id).html(conditions);
+			
+		}else if(fieldType == "external" || fieldType == "contact" || fieldType == "user"){
 			
 			var objectTypeSel = document.getElementById('objectTypeSel');
 			og.openLink(og.getUrl('reporting', 'get_external_field_values', {external_field: fields[selField].value, report_type: objectTypeSel[objectTypeSel.selectedIndex].value}), {
 				callback: function(success, data) {
 					if (success) {
-						var externalValueField = '<label for="conditions[' + id + '][value]">' + lang('value') + '</label><select class="reportConditionDD" id="conditions[' + id + '][value]" name="conditions[' + id + '][value]">';
+						var externalValueField = '<label for="conditions[' + id + '][value]">' + lang('value') + '</label>';
+						var external_fields_values = [];
 						for(var j=0; j < data.values.length; j++){
-							var extValue = data.values[j];
-							externalValueField += '<option value="' + extValue.id + '" ' + (extValue.id == value ? "selected" : "") + '>' + extValue.name + '</option>';
+							var extValue = data.values[j];							
+							external_fields_values.push([extValue.id,extValue.name]);
 						}
-						externalValueField += '</select>' + type_and_name; 
-						document.getElementById('tdValue' + id).innerHTML = externalValueField;
+						
+						externalValueField += type_and_name;
+
+					    var external_fields_store = new Ext.data.SimpleStore({
+	    		        	fields: ["id", "name"],
+	    		        	data: external_fields_values
+	    				});	 
+					    
+					    $('#tdValue'+id).html('<label for="containerConditions[' + id + '][value]">' + lang('value') + '</label>' + '<span id="'+genid+'containerConditions[' + id + '][value]"></span>' + type_and_name);
+						
+					    var tsContactCombo = new Ext.form.ComboBox({
+				    		renderTo:'tdValue'+id,					    		
+				    		name: genid+"conditions["+id+"][value]",
+				    		id: genid+"conditions["+id+"][value]",
+				    		value: value,
+				    		store: external_fields_store,
+				    		mode: 'local',
+				            cls: 'assigned-to-combo',
+				            triggerAction: 'all',
+				            selectOnFocus:true,
+				            width: 100,
+				            listWidth: 100,
+				            listClass: 'assigned-to-combo-list',
+				            displayField    : 'name',
+				            valueField        : 'id',
+				            hiddenName : "conditions["+id+"][value]",				            
+				            emptyText: '',
+				            valueNotFoundText: ''
+					    });	
 						
 						if(condition != ""){
-							var isparam_el = document.getElementById('conditions[' + id + '][is_parametrizable]');
-							var parametrizable = isparam_el && isparam_el.checked;
-							var valueField = document.getElementById('conditions[' + id + '][value]');
-							valueField.disabled = parametrizable;
+							var parametrizable = $("#" + genid + " [name='conditions[" + id + "][is_parametrizable]']").attr('checked') == 'checked';
+							if (parametrizable) {
+								$("#" + genid + " [name='conditions[" + id + "][value]']").attr('disabled', 'disabled');								
+							}
 						}
 					}
 				}
@@ -271,25 +369,49 @@ og.fieldChanged = function(id, condition, value){
 			conditions += '<option value="=">=</option>';
 			conditions += '<option value="<>"><></option>';
 			conditions += '</select>';
-			document.getElementById('tdConditions' + id).innerHTML = conditions;
+			$("#" + genid + " #tdConditions" + id).html(conditions);
+			
+		} else if(ot && ot.name == 'task' && fieldType == "calculated" && fields[selField].value == "status"){
+			var values = '<b>' + lang('value') + '</b>:<br/><select class="reportConditionDD" id="conditions[' + id + '][value]" name="conditions[' + id + '][value]">';
+			values += '<option value="0"' + (value == false ? "selected" : "") + '> '+ lang('pending') +'</option>';
+			values += '<option value="1" ' + (value != "" && value == true ? "selected" : "") + '>' + lang('complete') + '</option>';			
+			values += '</select>' + type_and_name;
+			$("#" + genid + " #tdValue" + id).html(values);
+			conditions += '<option value="=">' + lang('equals') + '</option>';
+			conditions += '</select>';
+			$("#" + genid + " #tdConditions" + id).html(conditions);			
 		}
 		
-		var conditionSel = document.getElementById('conditions[' + id + '][condition]');
-		for(var j=0; j < conditionSel.options.length; j++){ 
-			if(conditionSel.options[j].value == condition){
-				conditionSel.selectedIndex = j;
+		if (og.additional_report_condition_renderers && og.additional_report_condition_renderers.length > 0) {
+			
+			for (var i=0; i<og.additional_report_condition_renderers.length; i++) {
+				var fn = og.additional_report_condition_renderers[i];
+				if (typeof(fn) == 'function') {
+					var render_params = {
+						id: id,
+						ot: ot,
+						type_and_name: type_and_name,
+						fieldType: fieldType,
+						selected: fields[selField].value,
+						conditions: conditions,
+						value: value,
+						div_id: genid
+					}
+					fn.call(null, render_params);
+				}
 			}
 		}
+		
+		$("#" + genid + " [name='conditions[" + id + "][condition]']").val(condition);
+                var selector = "#" + genid + " [name='conditions[" + id + "][condition]']";
+		og.advanced_reports.hiddenInputType(selector);
 		if(condition == "") {
-			var isparam_el = document.getElementById('conditions[' + id + '][is_parametrizable]');
-			if (isparam_el) isparam_el.checked = false;
+			$("#" + genid + " [name='conditions[" + id + "][is_parametrizable]']").removeAttr('checked');
 			modified = true;
 		}else{
-			var isparam_el = document.getElementById('conditions[' + id + '][is_parametrizable]');
-			var parametrizable = isparam_el && isparam_el.checked;
-			var valueField = document.getElementById('conditions[' + id + '][value]');
-			if(valueField){
-				valueField.disabled = parametrizable;
+			var parametrizable = $("#" + genid + " [name='conditions[" + id + "][is_parametrizable]']").attr('checked') == 'checked';
+			if (parametrizable) {
+				$("#" + genid + " [name='conditions[" + id + "][value]']").attr('disabled', 'disabled');
 			}
 		}
 	}
@@ -306,9 +428,10 @@ og.changeParametrizable = function(id){
 };
 
 og.validateReport = function(genid){
-	var cpConditions = Ext.getDom(genid);
-	for(var i=0; i < cpConditions.childNodes.length; i++){
-		var deleted = document.getElementById('conditions[' + i + '][deleted]').value;
+	var conditions = $("#"+genid+" .condition-div");
+	for(var i=0; i < conditions.length; i++){
+		var is_del_el = document.getElementById('conditions[' + i + '][deleted]');
+		var deleted = is_del_el ? is_del_el.value : '0';
 		var isparam_el = document.getElementById('conditions[' + i + '][is_parametrizable]');
 		var parametrizable = isparam_el && isparam_el.checked;
 		if(deleted == "0" && !parametrizable){
@@ -316,16 +439,21 @@ og.validateReport = function(genid){
 			var fieldName = fields[fields.selectedIndex].text;
 			var field_db = fields[fields.selectedIndex].value;
 			if(field_db == 'workspace') continue;
-			var value = document.getElementById('conditions[' + i + '][value]').value;
-			if(value == ""){
-				alert(lang('condition value empty', fieldName));
-				return false;
-			}
+			
 			var fieldType = fields[fields.selectedIndex].className;
-			var condition = document.getElementById('conditions[' + i + '][condition]').value;
-			if(fieldType == 'numeric' && condition != '%' && !og.isReportFieldNumeric(value)){
-				alert(lang('condition value not numeric', fieldName));
-				return false;
+			
+			var val_el = document.getElementById('conditions[' + i + '][value]');
+			var value = val_el ? val_el.value : '';
+			
+			if (fieldType == 'numeric') {
+				var cond_el = document.getElementById('conditions[' + i + '][condition]');
+				if (cond_el) {
+					var condition = cond_el.value;
+					if(condition != '%' && !og.isReportFieldNumeric(value)){
+						alert(lang('condition value not numeric', fieldName));
+						return false;
+					}
+				}
 			}
 		}
 	}
@@ -336,7 +464,7 @@ og.validateReport = function(genid){
 		var item = columns[j];
 		if (item.type == 'hidden' && item.name.indexOf('columns') == 0) {
 			var item = columns[j];
-			if(item.value == 1){
+			if(item.value > 0){
 				colSelected = true;
 				break;
 			}
@@ -421,5 +549,5 @@ og.tttReportGbSelected = function(select, genid){
 };
 
 og.showPDFOptions = function(){
-	document.getElementById('pdfOptions').style.display = '';	
+	document.getElementById('pdfOptions').style.display = '';
 };

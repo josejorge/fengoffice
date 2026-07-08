@@ -70,10 +70,13 @@ og.mailAlertFormat = function(genid, opt) {
 				var sig = Ext.getDom(genid + 'signatures');
 
 				var iText = oEditor.getData();
-				 // remove line breaks
+				// remove line breaks
 				iText = iText.replace(/[\n\r]/ig, "");
+				
 				// replace signature
-				iText = iText.replace(/<div class="fengoffice_signature">.*?<\/div>/i, sig.actualTextSignature.replace(/\n/g, "<br />"));
+				var sig_regex = new RegExp('<div '+ og.mail.signature_div_attributes +'>.*?<\/div>', 'gi');
+				iText = iText.replace(sig_regex, sig.actualTextSignature.replace(/\n/g, "<br />"));
+				
 				// convert html to text
 				iText = og.htmlToText(iText);
 				mailBody.value = iText;
@@ -92,7 +95,7 @@ og.mailAlertFormat = function(genid, opt) {
 		Ext.getDom(genid + 'ck_editor').style.display = 'block';
 		var html = mailBody.value;
 		html = og.clean(html);
-		html = html.replace('--\n' + og.htmlToText(sig.actualTextSignature.replace(/\n/g, "<br />")), '--<br />' + sig.actualHtmlSignature);
+		html = html.replace('--\n' + og.htmlToText(sig.actualTextSignature.replace(/\n/g, "<br />")), '<br />' + sig.actualHtmlSignature);
 		html = html.replace(/\r\n/g, "<br />");
 		html = html.replace(/\r|\n/g, "<br />");
 		oEditor.setData(html);
@@ -112,7 +115,10 @@ og.setHfValue = function(genid, id, val) {
 
 og.setDiscard = function(genid, val){
 	var the_id = Ext.getDom(genid + 'id').value;
-	document.frmMail.action = og.getUrl('mail', 'discard', {id: the_id, ajax:'true'});
+	var form = document.getElementById(genid + 'form');
+	if (form) {
+		form.action = og.getUrl('mail', 'discard', {id: the_id, ajax:'true'});
+	}
 };
 
 og.addContactsToAdd = function(genid) {
@@ -148,7 +154,7 @@ og.changeSignature = function(genid, acc_id) {
 	setting_autoreply = genid.indexOf("autoreply")? true:false;
 	if (setting_autoreply){
 		genid = genid.replace(/autoreply/g,'');  
-	}	
+	}
 	var sig = Ext.getDom(genid + 'signatures');
 	for (i=0; i < sig.accountSignatures.length; i++) {
 		if (sig.accountSignatures[i].acc == acc_id) {
@@ -161,17 +167,13 @@ og.changeSignature = function(genid, acc_id) {
 		var iname = genid + 'ckeditor';
 		var editor = og.getCkEditorInstance(iname);
 		var html = editor.getData();
-		
-		var original_content = "";
-		var pos = html.indexOf('<div id="original_mail">');
-		if (pos > -1) {
-			original_content = html.substring(pos);
-		}
-		
-		html = html.replace(/\n/g, '');
-		html = html.replace(/<div class="fengoffice_signature">.*<\/div>/i, new_htmlsig) + original_content;
-		editor.setData(html);
-		
+
+        var $jq_html = $('<div id="temp_container">'+html+'</div>');
+
+
+        $jq_html.find('#'+genid+'_fengoffice_signature_id').replaceWith(new_htmlsig);
+
+		editor.setData($jq_html.html());
 	} else {
 		if (Ext.getDom('mailBody').value.indexOf('--\n' + sig.actualTextSignature) != -1) {
 			Ext.getDom('mailBody').value = Ext.getDom('mailBody').value.replace('--\n' + sig.actualTextSignature, '--\n' + new_textsig);
@@ -203,11 +205,11 @@ og.addMailAttachment = function(container, obj) {
  	}
  	if (obj.manager == 'ProjectFiles' || obj.manager == 'MailContents') {
  	 	var id = Ext.id();
- 		name += "<input id=\"check" + id + "\" type=\"checkbox\" checked=\"checked\"  style=\"margin-left: 30px; position: relative; top: 3px; width: 16px;\" name=\"attach_contents[" + count + "]\" />" +
-		"<label for=\"check" + id + "\" style=\"display: inline; margin-left: 5px;\">" + lang("attach contents") + "</label>";
+ 		name += "<label for=\"check" + id + "\" style=\"display: inline; margin-right: 50px;float:right;\">" + lang("attach contents") + "</label>"+
+ 			"<input id=\"check" + id + "\" type=\"checkbox\" checked=\"checked\"  style=\"float:right;margin-right: 5px; position: relative; top: 3px; width: 16px;\" name=\"attach_contents[" + count + "]\" />";
  	} else if (obj.manager == 'FwdMailAttach') {
- 	 	name += "<input type=\"checkbox\" checked=\"checked\" style=\"margin-left: 30px; position: relative; top: 3px; width: 16px;\" disabled=\"disabled\" />" +
-		"<label style=\"display: inline; margin-left: 5px;\">" + lang("attach contents") + "</label>";
+ 	 	name += "<label style=\"display: inline; margin-right: 50px;float:right;\">" + lang("attach contents") + "</label>" +
+ 	 		"<input type=\"checkbox\" checked=\"checked\" style=\"float:right; margin-right: 5px; position: relative; top: 3px; width: 16px;\" disabled=\"disabled\" />";
  	}
 	var html = 
 		"<input type=\"hidden\" value=\"" + objid + "\" name=\"linked_objects[" + count + "]\"/>" +
@@ -294,17 +296,28 @@ og.attachFromFileSystem = function(genid, account_member_id) {
 };
 
 og.attachFromWorkspace = function(genid) {
+	
+	var member_ids = [];
+	var context_ids = og.contextManager.dimensionMembers;
+	for (dim_id in context_ids) {
+		var mids = context_ids[dim_id];
+		for (i=0; i<mids.length; i++) {
+			if (mids[i] > 0) member_ids.push(mids[i]);
+		}
+	}
+	
 	og.ObjectPicker.show(function (objs) {
 		if (objs) {
 			var container = document.getElementById(genid + 'attachments');
 			for (var i=0; i < objs.length; i++) {
 				var o = objs[i].data;
-				var obj = {object_id: o.object_id, manager: 'ProjectFiles', name: o.name, icocls: o.ico};
+				var obj = {object_id: o.object_id, manager: 'ProjectFiles', name: o.name, icocls: o.ico, mimeType:o.mimeType};
 				og.addMailAttachment(container, obj);
 			}
 		}
-	}, this, 
-	{
+	}, this, {
+		ignore_context: true, // ignore the current context
+		extra_member_ids: Ext.util.JSON.encode(member_ids), // initialize with current context member ids
 		selected_type:'file',
 		types: ['file']
 	});
@@ -330,21 +343,29 @@ og.autoSaveDraft = function(genid) {
 	var mb = Ext.getDom(genid + 'mailBody');
 	if(mb == null) return;
 	
-	var old_val = og.setHfValue(genid, 'isDraft', true);
 	og.setHfValue(genid, 'autosave', true);
 
-	if (mb.oldMailBody == null) mb.oldMailBody = og.getMailBodyFromUI(genid);
+	if (mb.oldMailBody == null){
+		 mb.oldMailBody = og.getMailBodyFromUI(genid);
+	}
 	// if html -> always check for changes, if plain -> only check when key is pressed
 
 	var format_html = Ext.getDom(genid + 'format_html');
-	if (format_html && format_html.checked) og.checkMailBodyChanges(genid);
+	if (format_html && format_html.checked){
+		 og.checkMailBodyChanges(genid);
+	}
 		
 	if (mb.thisDraftHasChanges) {
 		mb.thisDraftHasChanges = false;
+		
 		var form = document.getElementById(genid + 'form');
+		
+		var prev_action = form.action;
+		form.action = og.getUrl('mail', 'autosave_draft', {ajax:'true'});
+		
 		if (form) form.onsubmit();
+		form.action = prev_action;
 	}
-	og.setHfValue(genid, 'isDraft', old_val);
 	og.setHfValue(genid, 'autosave', false);
 	og.stopAutosave(genid);
 	mb.autoSaveTOut = setTimeout(function() {

@@ -24,7 +24,7 @@ class ProjectWebpage extends BaseProjectWebpage {
 	 * @param array $errors
 	 * @return null
 	 */
-	function validate(&$errors) {
+	function validate($errors) {
 		if(!$this->validatePresenceOf('name')) {
 			$errors[] = lang('webpage title required');
 		} // if
@@ -122,7 +122,7 @@ class ProjectWebpage extends BaseProjectWebpage {
 	//  Permissions
 	// ---------------------------------------------------
 
-	function canAdd(Contact $user, $context, &$notAllowedMember = ''){
+	static function canAdd(Contact $user, $context, &$notAllowedMember = ''){
 		return can_add($user, $context, ProjectWebpages::instance()->getObjectTypeId(), $notAllowedMember);
 	}
 	

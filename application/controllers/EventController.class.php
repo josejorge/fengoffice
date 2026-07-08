@@ -66,7 +66,7 @@ class EventController extends ApplicationController {
 		foreach ($invitations as $id => $assist) {
 			$conditions = array('event_id' => $event->getId(), 'contact_id' => $id);
 			//insert only if not exists 
-			if (EventInvitations::findById($conditions) == null) {
+			if (EventInvitations::instance()->findById($conditions) == null) {
 				$invitation = new EventInvitation();
 				$invitation->setEventId($event->getId());
 				$invitation->setContactId($id);
@@ -78,7 +78,7 @@ class EventController extends ApplicationController {
 			}
 		}
 		// Delete non checked invitations
-		$previuos_invitations = EventInvitations::findAll(array('conditions' => '`event_id` = ' . $event->getId()));
+		$previuos_invitations = EventInvitations::instance()->findAll(array('conditions' => '`event_id` = ' . $event->getId()));
 		foreach ($previuos_invitations as $pinv) {
 			if (!array_key_exists($pinv->getContactId(), $invitations)) $pinv->delete();
 		}
@@ -103,9 +103,9 @@ class EventController extends ApplicationController {
 			ajx_current("back");
 		} else {
 			$conditions = array('conditions' => "`event_id` = " . DB::escape($event_id) . " AND `contact_id` = ". DB::escape($user_id));
-			$inv = EventInvitations::findOne($conditions);
+			$inv = EventInvitations::instance()->findOne($conditions);
 			$conditions_all = array('conditions' => "`event_id` = " . DB::escape($event_id));
-			$invs = EventInvitations::findAll($conditions_all);			
+			$invs = EventInvitations::instance()->findAll($conditions_all);			
 			if ($inv != null) {
 				if (!SystemPermissions::userHasSystemPermission(logged_user(), 'can_update_other_users_invitations') && $inv->getContactId() != logged_user()->getId()) {
 					flash_error(lang('no access permissions'));					
@@ -126,9 +126,9 @@ class EventController extends ApplicationController {
 			}
 			if ($from_post_get) {
 				// Notify creator (only when invitation is accepted or declined)
-				$event = ProjectEvents::findById(array('id' => $event_id));
+				$event = ProjectEvents::instance()->findById(array('id' => $event_id));
 				if ($inv->getInvitationState() == 1 || $inv->getInvitationState() == 2) {
-					$user = Contacts::findById(array('id' => $user_id));
+					$user = Contacts::instance()->findById(array('id' => $user_id));
 					session_commit();
 					Notifier::notifEventAssistance($event, $inv, $user, $invs);
 					if (!$silent) {
@@ -154,7 +154,12 @@ class EventController extends ApplicationController {
 	}
 	
 	
-	function getData($event_data){
+	function getData($event_data, $timezone_offset=null){
+
+		if (is_null($timezone_offset)) {
+			$timezone_offset = logged_user()->getUserTimezoneValue();
+		}
+		
 		// get the day
 			if (array_var($event_data, 'start_value') != '') {
 				$date_from_widget = array_var($event_data, 'start_value');
@@ -168,7 +173,7 @@ class EventController extends ApplicationController {
 				$day = isset($event_data['day'])?$event_data['day']:date('j', DateTimeValueLib::now()->getTimestamp());
 				$year = isset($event_data['year'])?$event_data['year']:date('Y', DateTimeValueLib::now()->getTimestamp());
 			}
-       		
+
 			if (array_var($event_data, 'start_time') != '') {
 				$this->parseTime(array_var($event_data, 'start_time'), $hour, $minute);
 			} else {
@@ -188,7 +193,7 @@ class EventController extends ApplicationController {
 			// get the options
 			$forever = 0;
 			$jump = array_var($event_data,'occurance_jump');
-			
+		
 			if(array_var($event_data,'repeat_option') == 1) $forever = 1;
 			elseif(array_var($event_data,'repeat_option') == 2) $rnum = array_var($event_data,'repeat_num');
 			elseif(array_var($event_data,'repeat_option') == 3) $rend = getDateValue(array_var($event_data,'repeat_end'));
@@ -260,7 +265,8 @@ class EventController extends ApplicationController {
 			}
 				
 			// calculate timestamp and durationstamp
-			$dt_start = new DateTimeValue(mktime($hour, $minute, 0, $month, $day, $year) - logged_user()->getTimezone() * 3600);
+			$dt_start = new DateTimeValue(mktime($hour, $minute, 0, $month, $day, $year) - $timezone_offset);
+
 			$timestamp = $dt_start->format('Y-m-d H:i:s');
 			$dt_duration = DateTimeValueLib::make($dt_start->getHour() + $durationhour, $dt_start->getMinute() + $durationmin, 0, $dt_start->getMonth(), $dt_start->getDay(), $dt_start->getYear());
 			$durationstamp = $dt_duration->format('Y-m-d H:i:s');
@@ -339,6 +345,7 @@ class EventController extends ApplicationController {
 	}
 	
 	function add() {
+
 		if (logged_user()->isGuest()) {
 			flash_error(lang('no access permissions'));
 			ajx_current("empty");
@@ -359,10 +366,10 @@ class EventController extends ApplicationController {
 				
 		$event_name = array_var($_GET, 'name'); //if sent from pupup
 		
-		//var_dump($event_data) ;
-		$month = isset($_GET['month'])?$_GET['month']:date('n', DateTimeValueLib::now()->getTimestamp() + logged_user()->getTimezone() * 3600);
-		$day = isset($_GET['day'])?$_GET['day']:date('j', DateTimeValueLib::now()->getTimestamp() + logged_user()->getTimezone() * 3600);
-		$year = isset($_GET['year'])?$_GET['year']:date('Y', DateTimeValueLib::now()->getTimestamp() + logged_user()->getTimezone() * 3600);
+		// when adding event use logged user timezone 
+		$month = isset($_GET['month'])?$_GET['month']:date('n', DateTimeValueLib::now()->getTimestamp() + logged_user()->getUserTimezoneValue() );
+		$day = isset($_GET['day'])?$_GET['day']:date('j', DateTimeValueLib::now()->getTimestamp() + logged_user()->getUserTimezoneValue() );
+		$year = isset($_GET['year'])?$_GET['year']:date('Y', DateTimeValueLib::now()->getTimestamp() + logged_user()->getUserTimezoneValue() );
 
 		$user_filter = isset($_GET['user_filter']) ? $_GET['user_filter'] : logged_user()->getId();
 		
@@ -375,7 +382,7 @@ class EventController extends ApplicationController {
 			// if data sent from quickadd popup (via get) we se it, else default
 			if (isset($_GET['start_time'])) $this->parseTime($_GET['start_time'], $hour, $minute);
 			else {
-				$hour = isset($_GET['hour']) ? $_GET['hour'] : date('G', DateTimeValueLib::now()->getTimestamp() + logged_user()->getTimezone() * 3600);
+				$hour = isset($_GET['hour']) ? $_GET['hour'] : date('G', DateTimeValueLib::now()->getTimestamp() + logged_user()->getUserTimezoneValue() );
 				$minute = isset($_GET['minute']) ? $_GET['minute'] : round((date('i') / 15), 0) * 15; //0,15,30 and 45 min
 			}
 			if(!user_config_option('time_format_use_24')) {
@@ -385,9 +392,9 @@ class EventController extends ApplicationController {
 				} else $pm = 0;
 			}
 			$event_data = array(
-				'month' => isset($_GET['month']) ? $_GET['month'] : date('n', DateTimeValueLib::now()->getTimestamp() + logged_user()->getTimezone() * 3600),
-				'year' => isset($_GET['year']) ? $_GET['year'] : date('Y', DateTimeValueLib::now()->getTimestamp() + logged_user()->getTimezone() * 3600),
-				'day' => isset($_GET['day']) ? $_GET['day'] : date('j', DateTimeValueLib::now()->getTimestamp() + logged_user()->getTimezone() * 3600),
+				'month' => isset($_GET['month']) ? $_GET['month'] : date('n', DateTimeValueLib::now()->getTimestamp() + logged_user()->getUserTimezoneValue() ),
+				'year' => isset($_GET['year']) ? $_GET['year'] : date('Y', DateTimeValueLib::now()->getTimestamp() + logged_user()->getUserTimezoneValue() ),
+				'day' => isset($_GET['day']) ? $_GET['day'] : date('j', DateTimeValueLib::now()->getTimestamp() + logged_user()->getUserTimezoneValue() ),
 				'hour' => $hour,
 				'minute' => $minute,
 				'pm' => (isset($pm) ? $pm : ""),
@@ -397,11 +404,11 @@ class EventController extends ApplicationController {
 				'durationmin' => isset($_GET['durationmin']) ? $_GET['durationmin'] : 0,
 			); // array
 		} // if
-		
+			
 		tpl_assign('event', $event);
 		tpl_assign('event_data', $event_data);
 		tpl_assign('event_related', false);
-		
+	
 		if (is_array(array_var($_POST, 'event'))) {
 			try {
 				$data = $this->getData($event_data);
@@ -410,7 +417,7 @@ class EventController extends ApplicationController {
 
 				DB::beginWork();
 				$event->save();
-
+	
 				$this->registerInvitations($data, $event);
 
 				if (isset($data['confirmAttendance'])) {
@@ -426,14 +433,14 @@ class EventController extends ApplicationController {
 						if ($selection instanceof Member) $member_ids[] = $selection->getId();
 					}
 				}
-				
+
 				
 				$object_controller = new ObjectController();
+				$object_controller->add_reminders($event);
 				$object_controller->add_to_members($event, $member_ids);
 				$object_controller->add_subscribers($event);
 				$object_controller->link_to_new_object($event);
 				$object_controller->add_custom_properties($event);
-				$object_controller->add_reminders($event);
 
 				if (array_var($_POST, 'popup', false)) {
 					// create default reminder
@@ -494,7 +501,7 @@ class EventController extends ApplicationController {
 					$users_to_inv = array();
 					foreach ($data['users_to_invite'] as $us => $v) {
 						if ($us != logged_user()->getId()) {
-							$users_to_inv[] = Contacts::findById(array('id' => $us));
+							$users_to_inv[] = Contacts::instance()->findById(array('id' => $us));
 						}
 					}
 					Notifier::notifEvent($event, $users_to_inv, 'new', logged_user());
@@ -526,7 +533,7 @@ class EventController extends ApplicationController {
 			return;
 		}
 		//check auth
-		$event = ProjectEvents::findById(get_id());
+		$event = ProjectEvents::instance()->findById(get_id());
 		if ($event != null) {
 		    if(!$event->canDelete(logged_user())){	    	
 				flash_error(lang('no access permissions'));
@@ -544,7 +551,7 @@ class EventController extends ApplicationController {
 			}
 			$events = array();
 			foreach($ev_ids as $id) {
-				$e = ProjectEvents::findById($id);
+				$e = ProjectEvents::instance()->findById($id);
 				if ($e instanceof ProjectEvent) $events[] = $e;
 			}
 		}
@@ -571,7 +578,7 @@ class EventController extends ApplicationController {
 						$ext_user = ExternalCalendarUsers::findByContactId();
 						if ($ext_user instanceof ExternalCalendarUser) {
 							$externalCalendarController = new ExternalCalendarController();
-							$externalCalendarController->delete_event_calendar_extern($event, $ext_user);
+							$externalCalendarController->delete_event_calendar_extern($event, $ext_user); 
 						}
 					}					
 				}catch(Exception $e) {
@@ -598,7 +605,7 @@ class EventController extends ApplicationController {
 			return;
 		}
 		//check auth
-		$event = ProjectEvents::findById(get_id());
+		$event = ProjectEvents::instance()->findById(get_id());
 		if ($event != null) {
 		    if(!$event->canDelete(logged_user())){	    	
 				flash_error(lang('no access permissions'));
@@ -615,7 +622,7 @@ class EventController extends ApplicationController {
 			}
 			$events = array();
 			foreach($ev_ids as $id) {
-				$e = ProjectEvents::findById($id);
+				$e = ProjectEvents::instance()->findById($id);
 				if ($e instanceof ProjectEvent) $events[] = $e;
 			}
 		}
@@ -690,9 +697,9 @@ class EventController extends ApplicationController {
 	}
 	
 	private function getActualDateToShow(&$day, &$month, &$year) {
-		$day = isset($_GET['day']) ? $_GET['day'] : (isset($_SESSION['day']) ? $_SESSION['day'] : date('j', DateTimeValueLib::now()->getTimestamp() + logged_user()->getTimezone() * 3600));
-		$month = isset($_GET['month']) ? $_GET['month'] : (isset($_SESSION['month']) ? $_SESSION['month'] : date('n', DateTimeValueLib::now()->getTimestamp() + logged_user()->getTimezone() * 3600));
-	    $year = isset($_GET['year']) ? $_GET['year'] : (isset($_SESSION['year']) ? $_SESSION['year'] : date('Y', DateTimeValueLib::now()->getTimestamp() + logged_user()->getTimezone() * 3600));
+		$day = isset($_GET['day']) ? $_GET['day'] : (isset($_SESSION['day']) ? $_SESSION['day'] : date('j', DateTimeValueLib::now()->getTimestamp() + logged_user()->getUserTimezoneValue() ));
+		$month = isset($_GET['month']) ? $_GET['month'] : (isset($_SESSION['month']) ? $_SESSION['month'] : date('n', DateTimeValueLib::now()->getTimestamp() + logged_user()->getUserTimezoneValue() ));
+	    $year = isset($_GET['year']) ? $_GET['year'] : (isset($_SESSION['year']) ? $_SESSION['year'] : date('Y', DateTimeValueLib::now()->getTimestamp() + logged_user()->getUserTimezoneValue() ));
 	}
 	
 	function setViewVariables($view_type, $user_filter, $status_filter, $task_filter) {
@@ -712,9 +719,9 @@ class EventController extends ApplicationController {
 		foreach ($users as $user) {
 			if ($user->getCompanyId()) $company_ids[] = $user->getCompanyId();
 		}
-		$companies = Contacts::findAll(array("conditions" => "is_company = 1 AND object_id IN (".implode(",", $company_ids).")"));
+		$companies = Contacts::instance()->findAll(array("conditions" => "is_company = 1 AND object_id IN (".implode(",", $company_ids).")"));
 		
-		$usr = Contacts::findById($user_filter);
+		$usr = Contacts::instance()->findById($user_filter);
 		$user_filter_comp = $usr != null ? $usr->getCompanyId() : 0;
 
 		tpl_assign('users', $users);
@@ -772,7 +779,7 @@ class EventController extends ApplicationController {
 		//check auth
 		$this->addHelper('textile');
 		ajx_set_no_toolbar(true);
-	    $event = ProjectEvents::findById(get_id());
+	    $event = ProjectEvents::instance()->findById(get_id());
 	    if (isset($event) && $event != null) {
 		    if(!$event->canView(logged_user())){
 				flash_error(lang('no access permissions'));
@@ -809,11 +816,11 @@ class EventController extends ApplicationController {
 			return;
 		}
 		$this->setTemplate ( 'event' );
-		$event = ProjectEvents::findById ( get_id () );
+		$event = ProjectEvents::instance()->findById ( get_id () );
 		
 		$user_filter = isset ( $_GET ['user_id'] ) ? $_GET ['user_id'] : logged_user ()->getId ();
 		
-		$inv = EventInvitations::findById ( array (
+		$inv = EventInvitations::instance()->findById( array (
 				'event_id' => $event->getId (),
 				'contact_id' => $user_filter 
 		) );
@@ -826,6 +833,9 @@ class EventController extends ApplicationController {
 			ajx_current ( "empty" );
 			return;
 		}
+
+		// use object time zone if it is different than the user's timezone
+		$tz_value = Timezones::getTimezoneOffsetToApply($event, logged_user());
 		
 		$event_data = array_var ( $_POST, 'event' );
 		if (! is_array ( $event_data )) {
@@ -883,8 +893,8 @@ class EventController extends ApplicationController {
 			
 			// if(isset($rend) AND $rend=="9999-00-00") $rend = "";
 			// organize the time and date data for the html select drop downs.
-			$thetime = $event->getStart ()->getTimestamp () + logged_user ()->getTimezone () * 3600;
-			$durtime = $event->getDuration ()->getTimestamp () + logged_user ()->getTimezone () * 3600 - $thetime;
+			$thetime = $event->getStart ()->getTimestamp () + $event->getTimezoneValue();
+			$durtime = $event->getDuration ()->getTimestamp () + $event->getTimezoneValue() - $thetime;
 			$hour = date ( 'G', $thetime );
 			// format time to 24-hour or 12-hour clock.
 			if (! user_config_option ( 'time_format_use_24' )) {
@@ -947,16 +957,38 @@ class EventController extends ApplicationController {
 			
 			// MANAGE CONCURRENCE WHILE EDITING
 			/*
-			 * FIXME or REMOVEME $upd = array_var($_POST, 'updatedon'); if ($upd && $event->getUpdatedOn()->getTimestamp() > $upd && !array_var($_POST,'merge-changes') == 'true') { ajx_current('empty'); evt_add("handle edit concurrence", array( "updatedon" => $event->getUpdatedOn()->getTimestamp(), "genid" => array_var($_POST,'genid') )); return; } if (array_var($_POST,'merge-changes') == 'true') { $this->setTemplate('view_event'); $editedEvent = ProjectEvents::findById($event->getId()); $this->view(); ajx_set_panel(lang ('tab name',array('name'=>$editedEvent->getTitle()))); ajx_extra_data(array("title" => $editedEvent->getTitle(), 'icon'=>'ico-event')); ajx_set_no_toolbar(true); ajx_set_panel(lang ('tab name',array('name'=>$editedEvent->getTitle()))); return; }
+			 * FIXME or REMOVEME $upd = array_var($_POST, 'updatedon'); if ($upd && $event->getUpdatedOn()->getTimestamp() > $upd && !array_var($_POST,'merge-changes') == 'true') { ajx_current('empty'); evt_add("handle edit concurrence", array( "updatedon" => $event->getUpdatedOn()->getTimestamp(), "genid" => array_var($_POST,'genid') )); return; } if (array_var($_POST,'merge-changes') == 'true') { $this->setTemplate('view_event'); $editedEvent = ProjectEvents::instance()->findById($event->getId()); $this->view(); ajx_set_panel(lang ('tab name',array('name'=>$editedEvent->getTitle()))); ajx_extra_data(array("title" => $editedEvent->getTitle(), 'icon'=>'ico-event')); ajx_set_no_toolbar(true); ajx_set_panel(lang ('tab name',array('name'=>$editedEvent->getTitle()))); return; }
 			 */
 			try {
-				$data = $this->getData ( $event_data );
+				
+				$zone_offset = $event->getTimezoneValue();
+				$tz_changed = false;
+				if (array_var($_REQUEST, 'timezone_edited') && array_var($_REQUEST, 'timezone_id')) {
+					$zone_id = array_var($_REQUEST, 'timezone_id');
+					$zone_offset = Timezones::getTimezoneOffset($zone_id);
+					$tz_changed = true;
+				}
+				
+				$data = $this->getData ( $event_data, $zone_offset );
+				
+				if ($tz_changed) {
+					$data['timezone_id'] = $zone_id;
+					$data['timezone_value'] = $zone_offset;
+				}
+				
 				// run the query to set the event data
 				$event->setFromAttributes ( $data );
 				
 				$this->registerInvitations ( $data, $event, false );
 				if (isset ( $data ['confirmAttendance'] )) {
 					$this->change_invitation_state ( $data ['confirmAttendance'], $event->getId (), $user_filter );
+				}
+
+				// subscribe or not the invited users
+				if (array_var($data, 'subscribe_invited')){
+					foreach ( $data ['users_to_invite'] as $us => $v ) {
+						$_POST['subscribers']['user_' + $us] = '1';
+					}
 				}
 				
 				DB::beginWork ();
@@ -965,11 +997,6 @@ class EventController extends ApplicationController {
 				$member_ids = json_decode ( array_var ( $_POST, 'members' ) );
 				
 				$object_controller = new ObjectController ();
-				$object_controller->add_to_members ( $event, $member_ids );
-				$object_controller->add_subscribers ( $event );
-				
-				$object_controller->link_to_new_object ( $event );
-				$object_controller->add_custom_properties ( $event );
 				
 				$old_reminders = ObjectReminders::getByObject ( $event );
 				if ($old_reminders != null) {
@@ -992,6 +1019,11 @@ class EventController extends ApplicationController {
 					$reminder->save ();
 				}
 				
+				$object_controller->add_to_members ( $event, $member_ids );
+				$object_controller->add_subscribers ( $event );
+				$object_controller->link_to_new_object ( $event );
+				$object_controller->add_custom_properties ( $event );
+
 				$event->resetIsRead ();
 				DB::commit ();
 				
@@ -1005,7 +1037,7 @@ class EventController extends ApplicationController {
 					$users_to_inv = array ();
 					foreach ( $data ['users_to_invite'] as $us => $v ) {
 						if ($us != logged_user ()->getId ()) {
-							$users_to_inv [] = Contacts::findById ( array (
+							$users_to_inv [] = Contacts::instance()->findById( array (
 									'id' => $us 
 							) );
 						}
@@ -1084,7 +1116,7 @@ class EventController extends ApplicationController {
 		$evid = array_var($_GET, 'evid');
 		
 		$i = 0;
-		$companies_tmp = Contacts::findAll(array("conditions" => "is_company = 1"));
+		$companies_tmp = Contacts::instance()->findAll(array("conditions" => "is_company = 1"));
 		$companies = array("0" => array('id' => $i++, 'name' => lang('without company'), 'logo_url' => '#'));
 		foreach ($companies_tmp as $comptmp) {
 			$companies[$comptmp->getId()] = array(
@@ -1115,7 +1147,7 @@ class EventController extends ApplicationController {
 							'id' => $user->getId(),
 							'name' => $user->getObjectName(),
 							'avatar_url' => $user->getPictureUrl(),
-							'invited' => $evid == 0 ? ($user->getId() == $actual_user_id) : (EventInvitations::findOne(array('conditions' => "`event_id` = $evid and `contact_id` = ".$user->getId())) != null),
+							'invited' => $evid == 0 ? ($user->getId() == $actual_user_id) : (EventInvitations::instance()->findOne(array('conditions' => "`event_id` = $evid and `contact_id` = ".$user->getId())) != null),
 							'mail' => $user->getEmailAddress()
 						);
 					}
@@ -1167,7 +1199,7 @@ class EventController extends ApplicationController {
 
 							$conditions = array('event_id' => $event->getId(), 'contact_id' => logged_user()->getId());
 							//insert only if not exists
-							if (EventInvitations::findById($conditions) == null) {
+							if (EventInvitations::instance()->findById($conditions) == null) {
 								$invitation = new EventInvitation();
 								$invitation->setEventId($event->getId());
 								$invitation->setContactId(logged_user()->getId());
@@ -1208,7 +1240,46 @@ class EventController extends ApplicationController {
 			else if (array_var($_POST, 'atimportform', 0)) ajx_current("empty");
 		}
 	}
-        
+
+	/**
+	 * This is the new function used for downloading 
+	 * the ICS file for calendar migrations.
+	 */
+	function icalendar_export_new()
+	{
+		$from = getDateValue(array_var($_POST, 'from_date'));
+		$to = getDateValue(array_var($_POST, 'to_date'));
+		$calendar_name = array_var($_POST, 'calendar_name');
+		$export_tasks = array_var($_POST, 'export_tasks');
+		
+		$buffer = null;
+		$events = ProjectEvents::getRangeProjectEvents($from, $to);
+		if($export_tasks=="on")
+		{
+			$tasks = ProjectTasks::getRangeTasksByUser($from, $to, logged_user());
+			$buffer = CalFormatUtilities::generateICalInfo($events, $calendar_name, null, $tasks);
+		}
+		else
+		{
+			$buffer = CalFormatUtilities::generateICalInfo($events, $calendar_name);
+		}
+
+		$filename = rand().'.ics';
+		$handle = fopen(ROOT.'/tmp/'.$filename, 'wb');
+		fwrite($handle, CalFormatUtilities::strip_tags_content($buffer));
+		fclose($handle);
+		
+		$_SESSION['calendar_export_filename'] = $filename;
+		$_SESSION['calendar_name'] = $calendar_name;
+
+		$size = filesize(ROOT.'/tmp/'.$filename);
+		download_file(ROOT.'/tmp/'.$filename, 'text/ics', $calendar_name.'_events.ics', $size, false);
+		flash_success(lang('success export calendar', count($events)));
+		ajx_current("back");
+	}
+
+
+	//Deprecated
 	function icalendar_export() {
 		$this->setTemplate('cal_export');
 		$calendar_name = array_var($_POST, 'calendar_name');			
@@ -1217,18 +1288,21 @@ class EventController extends ApplicationController {
 			$to = getDateValue(array_var($_POST, 'to_date'));
 			
 			$events = ProjectEvents::getRangeProjectEvents($from, $to);
+			$tasks = ProjectTasks::getRangeTasksByUser($from, $to, logged_user());			
+			$buffer = CalFormatUtilities::generateICalInfoWithTasks($events + $tasks, $calendar_name);
 			
-			$buffer = CalFormatUtilities::generateICalInfo($events, $calendar_name);
-			
-			$filename = rand().'.tmp';
+			$filename = rand().'.ics';
 			$handle = fopen(ROOT.'/tmp/'.$filename, 'wb');
 			fwrite($handle, $buffer);
 			fclose($handle);
 			
 			$_SESSION['calendar_export_filename'] = $filename;
 			$_SESSION['calendar_name'] = $calendar_name;
+
+			$size = filesize(ROOT.'/tmp/'.$filename);
+			download_file(ROOT.'/tmp/'.$filename, 'text/ics', $calendar_name.'_events.ics', $size, false);
 			flash_success(lang('success export calendar', count($events)));
-			ajx_current("empty");
+			ajx_current("back");
 		} else {
 			unset($_SESSION['calendar_export_filename']);
 			unset($_SESSION['calendar_name']);
@@ -1256,7 +1330,7 @@ class EventController extends ApplicationController {
 			$cal_name = logged_user()->getObjectName();
 			$ws_ids = 0;
 		} else {
-			$cal_name = Projects::findById($ws->getId())->getName();
+			$cal_name = Projects::instance()->findById($ws->getId())->getName();
 			if (isset($_GET['inc_subws']) && $_GET['inc_subws'] == 'true') {
 				$ws_ids = $ws->getAllSubWorkspacesQuery(true, logged_user(), ProjectContacts::instance()->getTableName(true).".`can_read_events` = 1");
 			} else {
@@ -1277,7 +1351,7 @@ class EventController extends ApplicationController {
 			ajx_current("empty");
 			return;
 		}
-		$event = ProjectEvents::findById(get_id());
+		$event = ProjectEvents::instance()->findById(get_id());
 		if(!$event->canEdit(logged_user())){	    	
 			flash_error(lang('no access permissions'));
 			ajx_current("empty");
@@ -1306,6 +1380,8 @@ class EventController extends ApplicationController {
 	    	$externalCalendarController->sync_event_on_extern_calendar($event );
 	    }
 	    
+	    Hook::fire("after_event_change_duration", array('event' => $event), $event);
+	    
 	    ajx_extra_data($this->get_updated_event_data($event));
 	    if ($event->isRepetitive()) ajx_current("reload");
 	    else ajx_current("empty");
@@ -1317,7 +1393,7 @@ class EventController extends ApplicationController {
 			ajx_current("empty");
 			return;
 		}
-		$event = ProjectEvents::findById(get_id());
+		$event = ProjectEvents::instance()->findById(get_id());
 		if(!$event->canEdit(logged_user())){	    	
 			flash_error(lang('no access permissions'));
 			ajx_current("empty");
@@ -1331,8 +1407,10 @@ class EventController extends ApplicationController {
 	    $hour = array_var($_GET, 'hour', 0);
 	    $min = array_var($_GET, 'min', 0);
 	    
-	    if ($hour == -1) $hour = format_date($event->getStart(), 'H', logged_user()->getTimezone() );
-	    if ($min == -1) $min = format_date($event->getStart(), 'i', logged_user()->getTimezone() );
+	    $tz_value = Timezones::getTimezoneOffsetToApply($event, logged_user());
+	    
+	    if ($hour == -1) $hour = format_date($event->getStart(), 'H', ($tz_value/3600) );
+	    if ($min == -1) $min = format_date($event->getStart(), 'i', ($tz_value/3600) );
 	    
 		if ($event->isRepetitive()) {
 			$orig_date = DateTimeValueLib::dateFromFormatAndString('Y-m-d H:i:s', array_var($_GET, 'orig_date'));
@@ -1353,7 +1431,7 @@ class EventController extends ApplicationController {
 		    	$event->setRepeatWnum($wnum);
 		    }
 	    } else {
-		    $new_start = new DateTimeValue(mktime($hour, $min, 0, $month, $day, $year) - logged_user()->getTimezone() * 3600);
+		    $new_start = new DateTimeValue(mktime($hour, $min, 0, $month, $day, $year) - $tz_value);
 	    }
 
 	    $diff = DateTimeValueLib::get_time_difference($event->getStart()->getTimestamp(), $event->getDuration()->getTimestamp());
@@ -1363,11 +1441,11 @@ class EventController extends ApplicationController {
 	    $new_duration->add('m', $diff['minutes']);
 	    
 	    // see if we have to reload
-		$os = format_date($event->getStart(), 'd', logged_user()->getTimezone() );
-		$od = format_date($event->getDuration(), 'd', logged_user()->getTimezone() );
-		$ohm = format_date($event->getDuration(), 'H:i', logged_user()->getTimezone() );
-		$nd = format_date($new_duration, 'd', logged_user()->getTimezone() );
-		$nhm = format_date($new_duration, 'H:i', logged_user()->getTimezone() );
+		$os = format_date($event->getStart(), 'd', ($tz_value/3600) );
+		$od = format_date($event->getDuration(), 'd', ($tz_value/3600) );
+		$ohm = format_date($event->getDuration(), 'H:i', ($tz_value/3600) );
+		$nd = format_date($new_duration, 'd', ($tz_value/3600) );
+		$nhm = format_date($new_duration, 'H:i', ($tz_value/3600) );
 		$different_days = ($os != $od && $ohm != '00:00') || ($day != $nd && $nhm != '00:00');
 	    
         DB::beginWork();
@@ -1405,6 +1483,8 @@ class EventController extends ApplicationController {
 	    	$externalCalendarController = new ExternalCalendarController();
 	    	$externalCalendarController->sync_event_on_extern_calendar($event );
 	    }
+	    
+	    Hook::fire("after_event_move", array('event' => $event), $event);
     
 	    ajx_extra_data($this->get_updated_event_data($event));
 	    if ($different_days || $event->isRepetitive()) ajx_current("reload");
@@ -1412,8 +1492,10 @@ class EventController extends ApplicationController {
 	}
 	
 	private function get_updated_event_data($event) {
-		$new_start = new DateTimeValue($event->getStart()->getTimestamp() + logged_user()->getTimezone() * 3600);
-	    $new_duration = new DateTimeValue($event->getDuration()->getTimestamp() + logged_user()->getTimezone() * 3600);
+		$tz_value = Timezones::getTimezoneOffsetToApply($event, logged_user());
+		
+		$new_start = new DateTimeValue($event->getStart()->getTimestamp() + $tz_value);
+	    $new_duration = new DateTimeValue($event->getDuration()->getTimestamp() + $tz_value);
 	    $ev_data = array (
 	    	'start' => $new_start->format(user_config_option('time_format_use_24') ? "G:i" : "g:i A"),
 	    	'end' => $new_duration->format(user_config_option('time_format_use_24') ? "G:i" : "g:i A"),
@@ -1431,7 +1513,7 @@ class EventController extends ApplicationController {
 			}
 			$events = array();
 			foreach($ev_ids as $id) {
-				$event = ProjectEvents::findById($id);
+				$event = ProjectEvents::instance()->findById($id);
 				$event->setIsRead(logged_user()->getId(),true);
 			}
 			ajx_current("reload");
@@ -1446,7 +1528,7 @@ class EventController extends ApplicationController {
 			}
 			$events = array();
 			foreach($ev_ids as $id) {
-				$event = ProjectEvents::findById($id);
+				$event = ProjectEvents::instance()->findById($id);
 				$event->setIsRead(logged_user()->getId(),false);
 			}
 			ajx_current("reload");
@@ -1641,7 +1723,7 @@ class EventController extends ApplicationController {
             //I find all those related to the task to find out if the original
             $event_related = ProjectEvents::findByRelated(array_var($_REQUEST, 'related_id'));
             if(!$event_related){
-                $event_related = ProjectEvents::findById(array_var($_REQUEST, 'related_id'));
+                $event_related = ProjectEvents::instance()->findById(array_var($_REQUEST, 'related_id'));
                 //is not the original as the original look plus other related
                 if($event_related->getOriginalEventId() != "0"){
                     ajx_extra_data(array("status" => true));

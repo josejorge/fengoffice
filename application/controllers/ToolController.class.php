@@ -193,10 +193,20 @@ class ToolController extends ApplicationController {
 	}
 	
 	private function escape_lang($string) {
-		return str_replace(array("\\", "'", "\r\n", "\r"), array("\\\\", "\\'", "\n", "\n"), $string);
+		// remove spaces between parameter brackets
+		$string = preg_replace("{\s*([0-9])\s*}", "$1", $string);
+		// escape special characters
+		$string = str_replace(array("\\", "'", "\r\n", "\r"), array("\\\\", "\\'", "\n", "\n"), $string);
+		// trim the resulting string
+		$string = trim($string);
+		
+		return $string;
 	}
 	
 	private function escape_lang_js($string) {
+		// remove spaces between parameter brackets
+		$string = preg_replace("{\s*([0-9])\s*}", "$1", $string);
+		
 		return str_replace(array("\\", "'", "\r\n", "\r", "\n"), array("\\\\", "\\'", "\n", "\n", "\\n"), $string);
 	}
 	
@@ -355,7 +365,7 @@ class ToolController extends ApplicationController {
 	 * Filter langs by key or value
 	 * @param $langs: Array of traductions
 	 * @param $filter: string to match in $langs array
-	 * @return An array with the traductions that its key or value contains the string $filter
+	 * @return array with the traductions that its key or value contains the string $filter
 	 */
 	private function filter_langs($langs, $filter) {
 		$filtered = array();
@@ -371,9 +381,9 @@ class ToolController extends ApplicationController {
 	
 	/**
 	 * Write language file
-	 * @param $locale: the language (e.g.: es_la)
-	 * @param $file: the language file to save
-	 * @param $lang: An array (key => value) containing the translations 
+	 * @param $locale: string the language (e.g.: es_la)
+	 * @param $file: string the language file to save
+	 * @param $lang: array (key => value) containing the translations 
 	 */
 	private function write_translations($locale, $file, $lang) {
 		

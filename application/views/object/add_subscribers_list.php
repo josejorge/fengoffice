@@ -30,6 +30,15 @@ require_javascript('og/modules/addMessageForm.js');
 	
 	$allowed_users = allowed_users_in_context($objectTypeId, $context, ACCESS_LEVEL_READ);
 	
+	// for tasks we must also check the system permission to see if each user can see tasks assinged to other
+	if ($object instanceof ProjectTask) {
+		$allowed_users_task = array();
+		foreach ($allowed_users as $allowed_user) {
+			if ($object->canView($allowed_user)) $allowed_users_task[] = $allowed_user;
+		}
+		$allowed_users = $allowed_users_task;
+	}
+	
 	Hook::fire('allowed_subscribers', $object, $allowed_users);
 	
 	$users = array();
@@ -40,12 +49,15 @@ require_javascript('og/modules/addMessageForm.js');
 	// include subscribed users that now are not allowed
 	foreach ($subscriberIds as $uid) {
 		if (!array_key_exists($uid, $users)) {
-			$cobj = Contacts::findById($uid);
+			$cobj = Contacts::instance()->findById($uid);
 			if ($cobj instanceof Contact) {
 				$users["u".$uid] = $cobj;
 			}
 		}
 	}
+	
+	$hook_params = array('genid' => $genid, 'object_type_id' => $object->getObjectTypeId(), 'context' => $object->getMembers(), 'subscriberIds' => $subscriberIds);
+	Hook::fire('filter_subscribers', $hook_params, $users);
 	
 	$grouped = array();
 	$allChecked = true;
@@ -66,7 +78,7 @@ require_javascript('og/modules/addMessageForm.js');
 
 	<?php if(is_array($users) && count($users)) { ?>
 		<div onclick="og.subscribeCompany(this)" class="container-div company-name<?php echo $allChecked ? ' checked' : '' ?>" onmouseout="og.rollOut(this,true)" onmouseover="og.rollOver(this)">
-		<?php $theCompany = Contacts::findById($companyId) ?>
+		<?php $theCompany = Contacts::instance()->findById($companyId) ?>
 			<div class="contact-picture-container" style="float:left;margin-left:10px;padding-top:3px;">
 				<img class="commentUserAvatar" src="<?php echo ($theCompany instanceof Contact ? $theCompany->getPictureUrl() : get_image_url('48x48/company.png')) ?>" alt="<?php echo clean($theCompany instanceof Contact ? $theCompany->getObjectName() : '') ?>" />
 			</div>

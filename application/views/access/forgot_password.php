@@ -1,5 +1,7 @@
 <?php
-set_page_title(lang('forgot password'));
+$page_title = lang('forgot password');
+Hook::fire('login_page_title', null, $page_title);
+set_page_title($page_title);
 add_javascript_to_page('jquery/jquery.js');
 
 $css = array();
@@ -19,7 +21,7 @@ foreach ($css as $c) {
 	<?php if (Plugins::instance()->isActivePlugin('custom_login')) {
 			echo_custom_logo_url();
 		  } else { ?>
-		<a class="logo" href="http://www.fengoffice.com"></a>
+		<a class="logo" href="https://projects.aphx.net"></a>
 	<?php } ?>
 	</div>
 </div>

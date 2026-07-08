@@ -25,19 +25,21 @@ og.ExtendedDialog = function(config) {
 		width: 450,
 		resizable: false,
 		closeAction: 'hide',
-		iconCls: 'op-ico',
+		iconCls: config.iconCls ? config.iconCls : 'op-ico',
 		border: false,
 		buttons: [{
 			text: (config.YESNO ? lang('yes') : lang('ok')),
 			handler: this.accept,
 			hidden: config.noOkBtn,
 			id: config.genid + 'ok_button',
+			cls: config.okBtnCls ? config.okBtnCls : '',
 			scope: this
 		},{
 			text: (config.YESNO ? lang('no') : lang('cancel')),
 			handler: this.cancel,
 			hidden: config.noCancel,
 			id: config.genid + 'cancel_button',
+			cls: config.cancelBtnCls ? config.cancelBtnCls : '',
 			scope: this
 		}],
 		items: [
@@ -84,3 +86,46 @@ og.ExtendedDialog.show = function(config) {
 og.ExtendedDialog.hide = function() {
 	if (this.dialog) this.dialog.hide();
 }
+
+
+
+
+
+
+og.ExtModal = function(config) {
+	
+	config.stateful = false;
+	if (!config.genid) config.genid = Ext.id();
+	
+	og.ExtModal.superclass.constructor.call(this, Ext.applyIf(config, {
+		y: 75,
+		id: config.genid + 'ext_modal',
+		layout: 'fit',
+		cls: 'ext-modal-object-list ' + config.basecls,
+		modal: true,
+		resizable: false,
+		border: false,
+		title: config.title,
+		html: config.html
+	}));
+}
+Ext.extend(og.ExtModal, Ext.Window, {
+});
+
+og.ExtModal.show = function(config) {
+	if (!config) config = {};
+	if (this.dialog) {
+		this.dialog.destroy();
+	}
+
+	this.dialog = new og.ExtModal(config);
+	this.dialog.purgeListeners();
+	this.dialog.show();
+	
+	return this.dialog;
+}
+
+og.ExtModal.hide = function() {
+	if (this.dialog) this.dialog.hide();
+}
+

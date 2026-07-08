@@ -10,14 +10,14 @@
     
     function render($control_name) {
     	$genid = gen_id();
-    	$groups = PermissionGroups::findAll(array('conditions' => "`type`='roles' AND `parent_id`>0"));
+    	$groups = PermissionGroups::instance()->findAll(array('conditions' => "`type`='roles' AND `parent_id`>0"));
     	
     	$value =  $this->getValue();
     	$out = '';
 		foreach ( $groups as $group ) { /* @var $dim Dimension */
 		
 			$checked = array_search($group->getId(), $value) !== false;
-			$out .= '<div style="float:left; margin-right: 15px; min-width: 130px;">';
+			$out .= '<div class="checkbox-config-option">';
 			$out .= label_tag($group->getName(), $genid.'_'.$control_name.'_'.$group->getId(), false, array('style' => 'cursor:pointer;'), '');
 			$out .= checkbox_field($control_name . '[' . $group->getId () . ']', $checked, array('id' => $genid.'_'.$control_name.'_'.$group->getId()));
 			$out .= '</div >';

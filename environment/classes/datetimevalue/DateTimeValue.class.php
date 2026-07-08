@@ -94,8 +94,8 @@ class DateTimeValue {
 	function isToday() {
 		$today = DateTimeValueLib::now();
 		if (logged_user() instanceof Contact) {
-			$date = new DateTimeValue($this->getTimestamp() + logged_user()->getTimezone() * 3600);
-			$today = new DateTimeValue($today->getTimestamp() + logged_user()->getTimezone() * 3600);
+			$date = new DateTimeValue($this->getTimestamp() + logged_user()->getUserTimezoneValue());
+			$today = new DateTimeValue($today->getTimestamp() + logged_user()->getUserTimezoneValue());
 		} else {
 			$date = $this;
 		}
@@ -445,8 +445,16 @@ class DateTimeValue {
 		}
 		return $this;
 	}
+
+	static function FormatTimeAmount($amount, $format='yfwdhms', $modulus = 1, $subtract = 0, $return_raw_data = false){
+
+		$dt = DateTimeValueLib::now();
+		$dt->advance(-1 * $amount);
+
+		return self::FormatTimeDiff($dt, null, $format, $modulus, $subtract, $return_raw_data);
+	}
 	
-	static function FormatTimeDiff(DateTimeValue $dt1, DateTimeValue $dt2=null, $format='yfwdhms', $modulus = 1, $subtract = 0){
+	static function FormatTimeDiff(DateTimeValue $dt1, DateTimeValue $dt2=null, $format='yfwdhms', $modulus = 1, $subtract = 0, $return_raw_data = false){
 		$t1 = $dt1->getTimestamp();
 		if ($dt2)
 			$t2 = $dt2->getTimestamp();
@@ -474,6 +482,9 @@ class DateTimeValue {
 			}else{
 				$out[$k] = 0;
 			}
+		}
+		if ($return_raw_data) {
+			return $out;
 		}
 		$result = '';
 		if ($out['y'] > 0)

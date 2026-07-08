@@ -1,0 +1,8 @@
+/* Style warnings */
+.widget-earned-value__warnings-container{
+    text-align: left;
+    font-size: 12px;
+    color: #888888;
+    margin: 0;
+
+}

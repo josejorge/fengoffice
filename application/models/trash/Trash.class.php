@@ -25,7 +25,7 @@ class Trash {
 			
 			$perm_join = "";
 			$perm_conditions = "";
-			if (logged_user() instanceof Contact) {
+			if (logged_user() instanceof Contact && !logged_user()->isAdministrator()) {
 				$logged_user_pgids = logged_user()->getPermissionGroupIds();
 				
 				$perm_join = "INNER JOIN ".TABLE_PREFIX."object_members om on om.object_id=o.id 
@@ -41,6 +41,7 @@ class Trash {
 					LIMIT $limit";
 			
 			$rows = DB::executeAll($sql);
+			if (!is_array($rows)) $rows = array();
 			
 			foreach ($rows as $row) {
 				try {

@@ -129,7 +129,7 @@ class OgHelper {
 		if ( $bookId != self::getGelsheetBookId($file_id)) return false ;
 		
 		
-		$file = ProjectFiles::findById($file_id);
+		$file = ProjectFiles::instance()->findById($file_id);
 		if (!$file instanceof ProjectFile) return false;
 		return can_write(self::getCompanyWebsite()->getLoggedUser(), $file);
 	}
@@ -140,7 +140,7 @@ class OgHelper {
 		if ($file_id == null) return false ;
 		if ( $bookId != self::getGelsheetBookId($file_id)) return false ;
 				
-		$file = ProjectFiles::findById($file_id);
+		$file = ProjectFiles::instance()->findById($file_id);
 		if (!$file instanceof ProjectFile) return false;
 		return can_read(self::getCompanyWebsite()->getLoggedUser(), $file);
 	}
@@ -150,7 +150,7 @@ class OgHelper {
 		$workspace_id = self::ogWorkspaceId() ;
 		
 		if ($workspace_id == null) return false ;
-		$workspace = Projects::findById($workspace_id);
+		$workspace = Projects::instance()->findById($workspace_id);
 		if (!$workspace instanceof Project) return false;
 		return can_add(self::getCompanyWebsite()->getLoggedUser(), $workspace, 'ProjectFiles');
 	}
@@ -170,9 +170,9 @@ class OgHelper {
 			WHERE fr.file_id  = $ogFileId AND so.column_name = 'filecontent'
 			ORDER by revision_number DESC LIMIT 1
 		"; 
-		$res = @mysql_query($sql);
+		$res = @mysqli_query(DB::connection()->getLink(), $sql);
 		if ($res) { 
-			$row  = @mysql_fetch_object($res) ;
+			$row  = @mysqli_fetch_object($res) ;
 			if (is_numeric($row->bookId)) return $row->bookId ;
 		}
 		return null ; 	

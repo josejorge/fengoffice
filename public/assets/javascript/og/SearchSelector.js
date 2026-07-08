@@ -56,8 +56,14 @@ ogSearchSelector.resetLimit = function (container_id, limit){
 
 //Jquery autocomplete
 ogSearchSelector.init = function (genid, container_id, extra_param, search_func, select_function, search_minLength, search_delay){
+	
+	var position_obj = { my : "right top", at: "right bottom", collision: "flipfit" };
+	if (ogSearchSelector.position_obj && ogSearchSelector.position_obj[container_id]) {
+		position_obj = ogSearchSelector.position_obj[container_id];
+	}
+
 	$("#"+container_id+"-input").autocomplete({
-			position: { my : "right top", at: "right bottom" },			
+			position: position_obj,
 			search: function(){
 								$(this).autocomplete("widget").show();
 								$(this).autocomplete("widget").empty();
@@ -127,7 +133,6 @@ ogSearchSelector.searchMember = function (genid, container_id, dimension_id, sea
 					var mpath_aux = {};
 					mpath_aux[dim_id] = {};
 					mpath_aux[dim_id][mem.id] = mem;
-					//text = og.getCrumbHtml(mpath_aux,false,null,false,null,false);
 					text = og.getEmptyCrumbHtml(mpath_aux,".search-selector-result",null,false);//searchResultInfo
 					
 					searchResultInfo += "<br>" + text;

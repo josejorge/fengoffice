@@ -210,7 +210,7 @@
     * @param integer $current_page Current page number
     * @return array
     */
-    function paginate($arguments = null, $items_per_page = 10, $current_page = 1) {
+    function paginate($arguments = null, $items_per_page = 10, $current_page = 1, $count = null) {
       if(isset($this) && instance_of($this, 'ObjectSubscriptions')) {
         return parent::paginate($arguments, $items_per_page, $current_page);
       } else {
@@ -225,7 +225,7 @@
     *
     * @return ObjectSubscriptions 
     */
-    function instance() {
+    static function instance() {
       static $instance;
       if(!instance_of($instance, 'ObjectSubscriptions')) {
         $instance = new ObjectSubscriptions();

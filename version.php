@@ -9,9 +9,8 @@
   * ant that means that you are not actualy using new version. You'll most probably end up with 
   * a lot of problems and errors in that situation; they will be gone as soon as your run the 
   * upgrade script.
-  *
-  * @author Ilija Studen <ilija.studen@gmail.com>
+  * 
   */
-  return '3.2.1';
-  
+
+  return '3.11.1.19';
 ?>

@@ -16,7 +16,8 @@
     	'id' => DATA_TYPE_INTEGER,
     	'object_id' => DATA_TYPE_INTEGER,
     	'custom_property_id' => DATA_TYPE_INTEGER,
-    	'value' => DATA_TYPE_STRING
+      'value' => DATA_TYPE_STRING,
+      'currency_id' => DATA_TYPE_INTEGER
     );
   
     /**
@@ -112,7 +113,7 @@
     *
     * @access public
     * @param array $arguments
-    * @return one or  CustomPropertyValues objects
+    * @return array of CustomPropertyValues objects
     */
     function findAll($arguments = null) {
       if(isset($this) && instance_of($this, 'CustomPropertyValues')) {
@@ -197,7 +198,7 @@
     * @param integer $current_page Current page number
     * @return array
     */
-    function paginate($arguments = null, $items_per_page = 10, $current_page = 1) {
+    function paginate($arguments = null, $items_per_page = 10, $current_page = 1, $count = null) {
       if(isset($this) && instance_of($this, 'CustomPropertyValues')) {
         return parent::paginate($arguments, $items_per_page, $current_page);
       } else {
@@ -210,7 +211,7 @@
     *
     * @return  CustomPropertyValues 
     */
-    function instance() {
+    static function instance() {
       static $instance;
       if(!instance_of($instance, 'CustomPropertyValues')) {
         $instance = new  CustomPropertyValues();

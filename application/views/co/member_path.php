@@ -1,19 +1,41 @@
 <?php
 	$dimensions_info = array();
+	$hidden_dim_ids = array();
 	
-	$dimensions = Dimensions::findAll();
+	$enabled_dimensions = config_option('enabled_dimensions');
+	$dimensions = Dimensions::instance()->findAll(array('conditions' => 'id IN ('.implode(',',$enabled_dimensions).') '));
 	foreach ($dimensions as $dimension) {
 		if (in_array($dimension->getCode(), array('feng_users', 'feng_persons'))) continue;
+		
+		$hook_return = null;
+		Hook::fire("hidden_breadcrumbs", array('ot_id' => $object->getObjectTypeId(), 'dim_id' => $dimension->getId()), $hook_return);
+		if (!is_null($hook_return) && array_var($hook_return, 'hidden')) {
+			$hidden_dim_ids[] = $dimension->getId();
+			continue;
+		}
+		
 		if (!isset($dimensions_info[$dimension->getName()])) {
 			$dimensions_info[$dimension->getName()] = array('id' => $dimension->getId(), 'members' => array());
 		}
 	}
 	
+	$breadcrumb_member_count = user_config_option('breadcrumb_member_count');
+	if (!$breadcrumb_member_count) $breadcrumb_member_count = 5;
+	
 	$members = $object->getMembers();
 	foreach ($members as $member) {
 		/* @var $member Member */
 		$dimension = $member->getDimension();
-		if (in_array($dimension->getCode(), array('feng_users', 'feng_persons'))) continue;
+		
+		// don't process more members than the amount rendered in breadcrumbs
+		if (isset($dimensions_info[$dimension->getName()]['members']) && count($dimensions_info[$dimension->getName()]['members']) >= $breadcrumb_member_count) {
+			continue;
+		}
+		
+		if (in_array($dimension->getCode(), array('feng_users', 'feng_persons')) || !in_array($dimension->getId(), $enabled_dimensions) 
+				 || in_array($dimension->getId(), $hidden_dim_ids)) {
+			continue;
+		}
 		
 		$obj_is_user = $object instanceof Contact && $object->isUser();
 		
@@ -27,75 +49,83 @@
 		}
 		$parents = array_reverse($member->getAllParentMembersInHierarchy(true));
 		foreach ($parents as $p) {
+		    $has_member_related = true;
 			$dimensions_info[$dimension->getName()]['members'][$p->getId()] = array('p' => $p->getParentMemberId(), 'name' => $p->getName(), 'ot' => $p->getObjectTypeId(), 'color' => $p->getMemberColor());
 		}
 	}
 	
 	foreach ($dimensions_info as &$dim_info) {
 		if (!isset($dim_info['icon'])) {
-			$dots = DimensionObjectTypes::findAll(array('conditions' => 'dimension_id = '.$dim_info['id']));
+			$dots = DimensionObjectTypes::instance()->findAll(array('conditions' => 'dimension_id = '.$dim_info['id']));
 			if (count($dots) > 0) {
-				$ot = ObjectTypes::findById($dots[0]->getObjectTypeId());
+				$ot = ObjectTypes::instance()->findById($dots[0]->getObjectTypeId());
 				if ($ot instanceof ObjectType) $dim_info['icon'] = $ot->getIconClass();
 			}
 		}
 	}
 	
-	$breadcrumb_member_count = user_config_option('breadcrumb_member_count');
-	if (!$breadcrumb_member_count) $breadcrumb_member_count = 5;
-	
-	$width_style = ($object instanceof ProjectTask || $object instanceof TemplateTask) ? "width:50%;" : "";
+	$width_style = ($object instanceof ProjectTask || $object instanceof TemplateTask) ? "width:50%;" : "width:100%;";
 	
 	if (count($dimensions_info) > 0) {
 		ksort($dimensions_info, SORT_STRING);
 ?>
+
+<?php if (isset($has_member_related)){ ?>
+<div class="clear"></div>
 <div class="commentsTitle"><?php echo lang('related to')?></div>
+<?php } ?>
 	<div style="padding-bottom: 10px;">
-	<div style="<?php echo $width_style?> float: left;">
+	<div style="<?php echo $width_style?> float: left; overflow: hidden;" class="object-view-member-path-container">
+	
+		<table style="width:100%;">
 <?php
-		foreach ($dimensions_info as $dname => $dinfo) {
-			$dim_name = $dname;
-			Hook::fire("edit_dimension_name", array('dimension' => $dinfo['id']), $dim_name);
-			
-			?><div class="member-path-dim-block">
-				<span class="dname coViewAction <?php echo array_var($dinfo, 'icon')?>"><?php echo $dim_name?>:&nbsp;</span>
-		<?php
-			$breadcrumb_count = 1;
-			if (count($dinfo['members']) == 0) {
-				echo '<span class="desc">' . lang('not related') . '</span>';
-			} else {
-				$first = true;
-				foreach ($dinfo['members'] as $mid => $minfo) {
-					
-					$color_cls = ' og-wsname-color-' . $minfo['color'];
-					
-					if (!$first) {
-						$breadcrumb_count++;
-						if ($breadcrumb_count > $breadcrumb_member_count) {
-							break;
-						}
-						if ($minfo['p'] == 0) echo "&nbsp;&#45;&nbsp;"; // " - " same level member separator
-						else echo ($minfo['color'] >= 0 ? "" : "/"); // submember separator
-					}
-					
-					echo '<span class="mname'.$color_cls.'">'; ?>
-					
-					<a href="#" onclick="if (og.additional_on_dimension_object_click[<?php echo $minfo['ot']?>]) 
-						eval(og.additional_on_dimension_object_click[<?php echo $minfo['ot']?>].replace('<parameters>', <?php echo $mid ?>))">
-					<?php echo $minfo['name']?>
-					</a>
-					
-					<?php
-					echo '</span>';
-					
-					$first = false;
-				}
-			}
-			if ($breadcrumb_member_count < count($dinfo['members'])) {				
-				echo '<span class="desc">&nbsp;' . lang('and xx more', count($dinfo['members']) - $breadcrumb_member_count) . '</span>';
-			}
-		?></div><?php
+		$gid = gen_id();
+		$member_path = $object->getMembersIdsToDisplayPath();
+        foreach ($dimensions_info as $dname => $dinfo) {
+		    if (count($dinfo['members']) > 0){
+		        
+    			$dim_name = $dname;
+    			Hook::fire("edit_dimension_name", array('dimension' => $dinfo['id']), $dim_name);
+    			?>
+    			<tr class="member-path-dim-block">
+    				<td style="width: 200px; height:25px;">
+    					<div class="dname coViewAction <?php echo array_var($dinfo, 'icon')?>"><?php echo $dim_name?>:&nbsp;</div>
+    				</td>
+    				<td>
+    			<?php 
+    			if (array_var($member_path, $dinfo['id'])) {
+    				$dim_mem_path = array($dinfo['id'] => array_var($member_path, $dinfo['id']));
+    				foreach ($dim_mem_path as $otid => &$otpath) {
+    					if (isset($otpath['is_assoc_dim'])) unset($otpath['is_assoc_dim']);
+    				}
+    		    ?>
+    					<div class='breadcrumb-container' style='max-width:800px; width:100%;' id="<?php echo $gid?>-breadcrumb-container-<?php echo $dinfo['id']?>">
+    						<script>
+    						
+    							var dim_mem_path = '<?php echo json_encode($dim_mem_path)?>';
+    							var mpath = null;
+    							if (dim_mem_path){
+    								mpath = Ext.util.JSON.decode(dim_mem_path);
+    							}
+    							var mem_path = "";			
+    							if (mpath){
+    								mem_path = og.getEmptyCrumbHtml(mpath, '.breadcrumb-container', null, null, null, true);
+    							}
+    							$("#<?php echo $gid?>-breadcrumb-container-<?php echo $dinfo['id']?>").html(mem_path);
+    						
+    						</script>
+    					</div>
+    				</td>
+    			</tr>
+    		<?php
+    			}
+    			
+    		//	$ret=null; Hook::fire('object_view_member_path_dims', $object, $ret);
+		    }
 		}
+		?>
+		</table>
+		<?php
 		
 	?></div>
 	<?php 
@@ -122,7 +152,15 @@
 	<div class="clear"></div>
 		
 	
-	
-	
+	<script>
+	$(function() {
+		// set max breadcrumb width
+		<?php foreach ($dimensions_info as $dname => $dinfo) { ?>
+			$("#<?php echo $gid?>-breadcrumb-container-<?php echo $dinfo['id']?>").css('max-width', ($("#<?php echo $gid?>-breadcrumb-container-<?php echo $dinfo['id']?>").parent().width()-10)+'px');
+		<?php } ?>
+		// draw breadcrumbs
+		og.eventManager.fireEvent('replace all empty breadcrumb', null);
+	});
+	</script>
 	<?php
 	}

@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Butia upgrade script will upgrade FengOffice 3.1.5.3 to FengOffice 3.2.1
+ * Butia upgrade script will upgrade FengOffice 3.1.5.3 to FengOffice 3.2.3
  *
  * @package ScriptUpgrader.scripts
  * @version 1.0
@@ -27,7 +27,7 @@ class ButiaUpgradeScript extends ScriptUpgraderScript {
 	 * @var array
 	 */
 	private $check_extensions = array(
-		'mysql', 'gd', 'simplexml'
+		'mysqli', 'gd', 'simplexml'
 	); // array
 
 	 /**
@@ -39,7 +39,7 @@ class ButiaUpgradeScript extends ScriptUpgraderScript {
 	function __construct(Output $output) {
 		parent::__construct($output);
 		$this->setVersionFrom('3.1.5.3');
-		$this->setVersionTo('3.2.1');
+		$this->setVersionTo('3.2.3');
 	} // __construct
 
 	function getCheckIsWritable() {
@@ -57,9 +57,9 @@ class ButiaUpgradeScript extends ScriptUpgraderScript {
 	 * @return boolean
 	 */
 	function execute() {
-		if (!@mysql_ping($this->database_connection)) {
-			if ($dbc = mysql_connect(DB_HOST, DB_USER, DB_PASS)) {
-				if (mysql_select_db(DB_NAME, $dbc)) {
+		if (!@mysqli_ping($this->database_connection)) {
+			if ($dbc = mysqli_connect(DB_HOST, DB_USER, DB_PASS)) {
+				if (mysqli_select_db($dbc, DB_NAME)) {
 					$this->printMessage('Upgrade script has connected to the database.');
 				} else {
 					$this->printMessage('Failed to select database ' . DB_NAME);
@@ -76,10 +76,10 @@ class ButiaUpgradeScript extends ScriptUpgraderScript {
 		//  Check MySQL version
 		// ---------------------------------------------------
 
-		$mysql_version = mysql_get_server_info($this->database_connection);
+		$mysql_version = mysqli_get_server_info($this->database_connection);
 		if($mysql_version && version_compare($mysql_version, '4.1', '>=')) {
 			$constants['DB_CHARSET'] = 'utf8';
-			@mysql_query("SET NAMES 'utf8'", $this->database_connection);
+			@mysqli_query($this->database_connection, "SET NAMES 'utf8'");
 			tpl_assign('default_collation', $default_collation = 'collate utf8_unicode_ci');
 			tpl_assign('default_charset', $default_charset = 'DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci');
 		} else {
@@ -149,9 +149,9 @@ class ButiaUpgradeScript extends ScriptUpgraderScript {
 				  `template_id` INTEGER UNSIGNED NOT NULL,
 				  `instantiation_id` INTEGER UNSIGNED NOT NULL,
 				  `parameter_name` VARCHAR(255) NOT NULL DEFAULT '',
-				  `value` TEXT NOT NULL,
+				  `value` TEXT NULL,
 				  PRIMARY KEY (`template_id`, `instantiation_id`, `parameter_name`)
-				) ENGINE = InnoDB;
+				) ENGINE = InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;
 			";
 			
 			if (!$this->checkColumnExists($t_prefix."project_tasks", "instantiation_id", $this->database_connection)) {
@@ -163,8 +163,8 @@ class ButiaUpgradeScript extends ScriptUpgraderScript {
 			if (!$this->checkColumnExists($t_prefix."queued_emails", "cc", $this->database_connection)) {
 				$upgrade_script .= "
 					ALTER TABLE `".$t_prefix."queued_emails`
-					 ADD COLUMN `cc` TEXT NOT NULL AFTER `to`,
-					 ADD COLUMN `bcc` TEXT NOT NULL AFTER `cc`;
+					 ADD COLUMN `cc` TEXT NULL AFTER `to`,
+					 ADD COLUMN `bcc` TEXT NULL AFTER `cc`;
 				";
 			}
 			
@@ -184,7 +184,7 @@ class ButiaUpgradeScript extends ScriptUpgraderScript {
 					  `can_delete` BOOLEAN NOT NULL,
 					  `can_write` BOOLEAN NOT NULL,
 					  PRIMARY KEY (`role_id`, `object_type_id`)
-					) ENGINE = InnoDB;
+					) ENGINE = InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;
 				";
 				$upgrade_script .= "
 					INSERT INTO `".$t_prefix."max_role_object_type_permissions` SELECT * FROM `".$t_prefix."role_object_type_permissions`;
@@ -201,7 +201,7 @@ class ButiaUpgradeScript extends ScriptUpgraderScript {
 			if (!$this->checkColumnExists($t_prefix."template_parameters", "default_value", $this->database_connection)) {
 				$upgrade_script .= "
 					ALTER TABLE `".$t_prefix."template_parameters`
-					 ADD COLUMN `default_value` TEXT NOT NULL;
+					 ADD COLUMN `default_value` TEXT NULL;
 				";
 			}
 			
@@ -248,8 +248,7 @@ class ButiaUpgradeScript extends ScriptUpgraderScript {
 			$upgrade_script .= "
 				INSERT INTO `".$t_prefix."contact_config_options` (`category_name`, `name`, `default_value`, `config_handler_class`, `is_system`, `option_order`, `dev_comment`) VALUES
 					('general', 'listingContactsBy', '0', 'BoolConfigHandler', '0', '0', NULL),
-					('task panel', 'pushUseWorkingDays', '1', 'BoolConfigHandler', '1', '0', NULL),
-					('task panel', 'zoom in gantt', '3', 'IntegerConfigHandler', 1, 0, NULL)
+					('task panel', 'pushUseWorkingDays', '1', 'BoolConfigHandler', '1', '0', NULL)
 				ON DUPLICATE KEY UPDATE name=name;
 			";
 
@@ -412,7 +411,7 @@ class ButiaUpgradeScript extends ScriptUpgraderScript {
 		
 		if (version_compare($installed_version, '3.2.1-beta') < 0) {
 			$upgrade_script .= "
-				ALTER TABLE `".$t_prefix."objects` ADD INDEX `type_trash_arch`(`object_type_id`, `trashed_on`, `archived_on`);
+				ALTER TABLE `".$t_prefix."objects` ADD INDEX (`object_type_id`, `trashed_on`, `archived_on`);
 			";
 			
 			$upgrade_script .= "
@@ -427,11 +426,64 @@ class ButiaUpgradeScript extends ScriptUpgraderScript {
 			";
 		}
 		
+		if (version_compare($installed_version, '3.2.1.1') < 0) {
+			if (!$this->checkColumnExists($t_prefix."contacts", "picture_file_small", $this->database_connection)) {
+				$upgrade_script .= "
+					ALTER TABLE `" . $t_prefix . "contacts`
+					 ADD COLUMN `picture_file_small` VARCHAR(100) NOT NULL AFTER `picture_file`,
+					 ADD COLUMN `picture_file_medium` VARCHAR(100) NOT NULL AFTER `picture_file_small`;
+				";
+			}	
+		}
+		
+		if (version_compare($installed_version, '3.2.2-alpha') < 0) {
+			// config option to specify which address fields are mandatory in case of adding an address
+			$upgrade_script .= "
+				INSERT INTO `".$t_prefix."config_options` (`category_name`, `name`, `value`, `config_handler_class`, `is_system`, `option_order`, `dev_comment`) VALUES
+				 ('general', 'mandatory_address_fields', '', 'AddressFieldsConfigHandler', 0, 0, NULL)
+				ON DUPLICATE KEY UPDATE name=name;
+			";
+		}
+		
+		if (version_compare($installed_version, '3.2.2-beta') < 0) {
+			$upgrade_script .= "
+				DELETE FROM ".$t_prefix."role_object_type_permissions
+				WHERE object_type_id IN (
+					SELECT o.id
+					FROM `".$t_prefix."object_types` o
+					WHERE o.`name` IN ('comment','template')
+				);
+				
+				DELETE FROM ".$t_prefix."max_role_object_type_permissions 
+				WHERE object_type_id IN (
+					 SELECT o.id
+					 FROM `".$t_prefix."object_types` o 
+					 WHERE o.`name` IN ('comment','template')				
+				);
+				 
+				 
+				DELETE FROM ".$t_prefix."contact_member_permissions 
+				WHERE object_type_id IN (
+					 SELECT o.id
+					 FROM `".$t_prefix."object_types` o 
+					 WHERE o.`name` IN ('comment','template')				
+				);
+			";
+		}
+		
+		if (version_compare($installed_version, '3.2.3-beta') < 0) {
+			$upgrade_script .= "
+			INSERT INTO `" . $t_prefix . "contact_config_options` (`category_name`, `name`, `default_value`, `config_handler_class`, `is_system`, `option_order`, `dev_comment`) VALUES 
+				('task panel', 'tasksPreviousPendingTasks', '1', 'BoolConfigHandler', 1, 0, ''),
+				('task panel', 'can notify subscribers', '1', 'BoolConfigHandler', 0, 0, 'Notification checkbox default value')
+					ON DUPLICATE KEY UPDATE id=id;
+			";
+		}
 		
 		
 		// Execute all queries
 		if(!$this->executeMultipleQueries($upgrade_script, $total_queries, $executed_queries, $this->database_connection)) {
-			$this->printMessage('Failed to execute DB schema transformations. MySQL said: ' . mysql_error(), true);
+		    $this->printMessage('Failed to execute DB schema transformations. MySQL said: ' . mysqli_error($this->database_connection), true);
 			return false;
 		}
 		$this->printMessage("Database schema transformations executed (total queries: $total_queries)");

@@ -18,7 +18,7 @@
     	'contact_id' => DATA_TYPE_INTEGER, 
     	'email_type_id' => DATA_TYPE_INTEGER, 
     	'email_address' => DATA_TYPE_STRING, 
-    	'is_main' => DATA_TYPE_BOOLEAN
+    	'is_main' => DATA_TYPE_BOOLEAN,
     );
   
     /**
@@ -27,7 +27,7 @@
     * @return BaseContactEmails 
     */
     function __construct() {
-      //Hook::fire('object_definition', 'ContactEmail', self::$columns);
+      Hook::fire('object_definition', 'ContactEmail', self::$columns);
       parent::__construct('ContactEmail', 'contact_emails', true);
     } // __construct
     
@@ -200,7 +200,7 @@
     * @param integer $current_page Current page number
     * @return array
     */
-    function paginate($arguments = null, $items_per_page = 10, $current_page = 1) {
+    function paginate($arguments = null, $items_per_page = 10, $current_page = 1, $count = null) {
       if(isset($this) && instance_of($this, 'ContactEmails')) {
         return parent::paginate($arguments, $items_per_page, $current_page);
       } else {
@@ -213,7 +213,7 @@
     *
     * @return ContactEmails 
     */
-    function instance() {
+    static function instance() {
       static $instance;
       if(!instance_of($instance, 'ContactEmails')) {
         $instance = new ContactEmails();

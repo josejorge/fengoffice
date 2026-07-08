@@ -1,0 +1,79 @@
+/** 
+   Style information widget
+*/
+
+.information-widget-body{
+    padding: 0 30px 30px 30px;
+}
+
+.information-widget-group{
+    width: 100%;
+    margin-bottom: 25px;
+    line-height: 2.5;
+}
+
+.information-widget-group:last-child{
+    margin-bottom: 0px;
+}
+
+.information-widget--left-side {
+    float: left;
+    width: 48%;
+    margin-top: 30px;
+    min-width: 380px;
+    margin-right: 4%;
+}
+
+.information-widget--right-side {
+    float: left;
+    width: 48%;
+    margin-top: 30px;
+    min-width: 380px;
+}
+
+.information-widget-group-header{
+    font-size: 17px;
+    font-weight: 600;
+    color: #333;
+}
+
+
+/** 
+   Style table 
+*/
+.information-widget-group-table{
+}
+
+.information-widget-table-row{
+}
+
+.information-widget-table-definition{
+    padding-right: 20px;
+    color: #666;
+    width: 160px;
+    min-width: 160px;
+}
+
+.information-widget-table-value{
+    /* These are technically the same, but use both */
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+
+  -ms-word-break: break-all;
+  /* This is the dangerous one in WebKit, as it breaks things wherever */
+  word-break: break-all;
+  /* Instead use this non-standard one: */
+  word-break: break-word;
+
+  /* Adds a hyphen where the word breaks, if supported (No Blink) */
+  -ms-hyphens: auto;
+  -moz-hyphens: auto;
+  -webkit-hyphens: auto;
+  hyphens: auto;
+}
+
+.information-widget-table-value br {
+    display: none;
+}
+
+

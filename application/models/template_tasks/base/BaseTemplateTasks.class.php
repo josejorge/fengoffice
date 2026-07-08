@@ -50,7 +50,8 @@ abstract class BaseTemplateTasks extends ContentDataObjects {
         'use_due_time' => DATA_TYPE_BOOLEAN,
         'use_start_time' => DATA_TYPE_BOOLEAN,
         'original_task_id' => DATA_TYPE_INTEGER,
-        'type_content' => DATA_TYPE_STRING
+        'type_content' => DATA_TYPE_STRING,
+		'is_manual_percent_completed' => DATA_TYPE_BOOLEAN,
 	);
 
 	/**
@@ -159,20 +160,29 @@ abstract class BaseTemplateTasks extends ContentDataObjects {
     } // getReportObjectTitle
     
     /**
-    * Return template object properties
+    * Returns the list of template object properties (possible parameters)
     *
     * @access public
     * @param void
     * @return string
     */
     function getTemplateObjectProperties() {
-    	return array(
-    		array('id' => 'name', 'type' => self::getColumnType('name')),
-    		array('id' => 'text', 'type' => self::getColumnType('text')),
-    		array('id' => 'start_date', 'type' => self::getColumnType('start_date')),
-    		array('id' => 'due_date', 'type' => self::getColumnType('due_date')),
-    		array('id' => 'assigned_to_contact_id', 'type' => 'USER')
+        $templateObjectProperties = array(
+            array('id' => 'name', 'name' => lang('field ProjectTasks name'), 'type' => self::instance()->getColumnType('name')),
+            array('id' => 'text', 'name' => lang('field ProjectTasks text'), 'type' => self::instance()->getColumnType('text')),
+            array('id' => 'start_date', 'name' => lang('field ProjectTasks start_date'), 'type' => self::instance()->getColumnType('start_date')),
+            array('id' => 'due_date', 'name' => lang('field ProjectTasks due_date'), 'type' => self::instance()->getColumnType('due_date')),
+            array('id' => 'assigned_to_contact_id', 'name' => lang('field ProjectTasks assigned_to_contact_id'), 'type' => 'USER')
     	);
+    	
+        //Add more possible Object Properties
+        Hook::fire('add_custom_properties_as_template_properties', null, $templateObjectProperties);
+
+        usort($templateObjectProperties, function ($prop1, $prop2) {
+            return strcmp($prop1['name'], $prop2['name']);
+        });
+            
+        return $templateObjectProperties;
     } // getTemplateObjectProperties
 
 	// -------------------------------------------------------
@@ -191,7 +201,7 @@ abstract class BaseTemplateTasks extends ContentDataObjects {
 	 *  - offset - limit offset, valid only if limit is present
 	 *  - limit
 	 *
-	 * @return one or TemplateTasks objects
+	 * @return TemplateTasks objects
 	 * @throws DBQueryError
 	 */
 	function find($arguments = null) {
@@ -206,8 +216,8 @@ abstract class BaseTemplateTasks extends ContentDataObjects {
 	 * Find all records
 	 *
 	 * @access public
-	 * @param array $arguments
-	 * @return one orTemplateTasks objects
+	 * @param  array $arguments
+	 * @return TemplateTasks objects
 	 */
 	function findAll($arguments = null) {
 		if(isset($this) && instance_of($this, 'TemplateTasks')) {
@@ -292,7 +302,7 @@ abstract class BaseTemplateTasks extends ContentDataObjects {
 	 * @param integer $current_page Current page number
 	 * @return array
 	 */
-	function paginate($arguments = null, $items_per_page = 10, $current_page = 1) {
+	function paginate($arguments = null, $items_per_page = 10, $current_page = 1, $count = null) {
 		if(isset($this) && instance_of($this, 'TemplateTasks')) {
 			return parent::paginate($arguments, $items_per_page, $current_page);
 		} else {
@@ -305,7 +315,7 @@ abstract class BaseTemplateTasks extends ContentDataObjects {
 	 *
 	 * @return TemplateTasks
 	 */
-	function instance() {
+	static function instance() {
 		static $instance;
 		if(!instance_of($instance, 'TemplateTasks')) {
 			$instance = new TemplateTasks();

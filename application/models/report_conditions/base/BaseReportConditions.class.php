@@ -20,7 +20,7 @@
     	'field_name' => DATA_TYPE_STRING,
     	'condition' => DATA_TYPE_STRING,
     	'value' => DATA_TYPE_STRING,
-    	'is_parametrizable' => DATA_TYPE_BOOLEAN
+    	'is_parametrizable' => DATA_TYPE_BOOLEAN,
     );
   
     /**
@@ -29,6 +29,7 @@
     * @return ReportCondition 
     */
     function __construct() {
+	  Hook::fire('object_definition', 'ReportCondition', self::$columns);
       parent::__construct('ReportCondition', 'report_conditions', true);
     } // __construct
     
@@ -201,7 +202,7 @@
     * @param integer $current_page Current page number
     * @return array
     */
-    function paginate($arguments = null, $items_per_page = 10, $current_page = 1) {
+    function paginate($arguments = null, $items_per_page = 10, $current_page = 1, $count = null) {
       if(isset($this) && instance_of($this, 'ReportConditions')) {
         return parent::paginate($arguments, $items_per_page, $current_page);
       } else {
@@ -214,7 +215,7 @@
     *
     * @return  ReportConditions 
     */
-    function instance() {
+    static function instance() {
       static $instance;
       if(!instance_of($instance, 'ReportConditions')) {
         $instance = new ReportConditions();

@@ -19,6 +19,9 @@ foreach ($default_user_permissions as $perm_info) {
 <input id="<?php echo $genid ?>hfAllowedOTbyMemType" type="hidden" value="<?php echo str_replace('"',"'", json_encode($allowed_object_types_by_member_type));?>" />
 <input id="<?php echo $genid ?>hfMemTypes" type="hidden" value="<?php echo str_replace('"',"'", json_encode($member_types));?>" />
 <input id="<?php echo $genid ?>hfPermsSend" name="<?php echo $name ?>" type="hidden" value="" />
+<input id="<?php echo $genid ?>hfPermsApplyToAll" name="apply_to_all_<?php echo $name ?>" type="hidden" value="" />
+<input id="<?php echo $genid ?>hfPermsApplyToSubmembers" name="apply_to_submembers_<?php echo $name ?>" type="hidden" value="" />
+<input id="<?php echo $genid ?>hfAdditionalPermsSend" name="additional_<?php echo $name ?>" type="hidden" value="" />
 <input id="<?php echo $genid ?>hfPgId" name="hfPgId" type="hidden" value="<?php echo $pg_id?>" />
 
 <?php 
@@ -37,7 +40,7 @@ foreach ($default_user_permissions as $perm_info) {
 <?php
 
 foreach ( $dimensions as $dimension ) {
-	if ($dimension->getOptions(1) && isset($dimension->getOptions(1)->hidden) && $dimension->getOptions(1)->hidden) continue;
+	
 	$class = $dimension->getIsManageable() ? 'toggle_expanded' : 'toggle_collapsed';
 	$expand = $dimension->getIsManageable() ? 'false' : 'true';
 	?>
@@ -53,13 +56,27 @@ foreach ( $dimensions as $dimension ) {
 <?php
 	$forced_members_param = "";
 	if (isset($is_new_user) && $is_new_user) {
-		$forced_members_param = "&new_user=1&forced_members=".json_encode(array_keys($member_permissions));
+		$forced_members_param = "&new_user=1";
+		?>
+		<input type="hidden" name="forced_members"
+			id="<?php echo $genid?>forced_members_<?php echo $dimension->getId()?>" 
+			value="<?php echo json_encode(array_keys($member_permissions)); ?>">
+		<?php
 	} 
 	// tree with members where user has permissions
 	echo render_single_dimension_tree ( $dimension, $genid, null, array( 
-		'select_root' => false, 'component_id' => $genid . '_with_permissions_' . $dimension->getId(), 'dont_load' => !$dimension->getIsManageable(),
+		'select_root' => false, 
+		'component_id' => $genid . '_with_permissions_' . $dimension->getId(), 
+		'dont_load' => !$dimension->getIsManageable(),
 		'loadUrl' => 'index.php?c=dimension&a=dimension_tree_for_permissions&ajax=true&dimension_id='.$dimension->getId().'&only_with_perm=1&pg='.$pg_id."$forced_members_param",
-		'enableDD' => true, 'ddGroup' => $genid.'_dimension_'.$dimension->getId(), 'width' => '300'
+		'loadAdditionalParameters' => array($genid."forced_members_".$dimension->getId()),
+		'enableDD' => true, 
+		'ddGroup' => $genid.'_dimension_'.$dimension->getId(), 
+		'width' => '300',
+		'all_members' => false,
+		'root_node_text' => $dimension->getName(),//lang('All'),
+		'get_childs_params' => array('pg_id' => $pg_id, 'with_permissions' => '1'),
+		//'use_ajax_member_tree' => true,
 	));
 ?>
 		<div class="desc" style="width:300px;"><?php echo lang('drag to right to remove permissions')?></div>
@@ -69,13 +86,27 @@ foreach ( $dimensions as $dimension ) {
 <?php 
 	$excluded_members_param = "";
 	if (isset($is_new_user) && $is_new_user) {
-		$excluded_members_param = "&new_user=1&excluded_members=".json_encode(array_keys($member_permissions));
+		$excluded_members_param = "&new_user=1";
+		?>
+		<input type="hidden" name="excluded_members" 
+			id="<?php echo $genid?>excluded_members_<?php echo $dimension->getId()?>" 
+			value="<?php echo json_encode(array_keys($member_permissions)); ?>">
+		<?php
 	}
 	// tree with members where user doesn't have permissions
 	echo render_single_dimension_tree ( $dimension, $genid, null, array(
-		'select_root' => false, 'component_id' => $genid . '_without_permissions_' . $dimension->getId(), 'dont_load' => !$dimension->getIsManageable(),
+		'select_root' => false, 
+		'component_id' => $genid . '_without_permissions_' . $dimension->getId(), 
+		'dont_load' => !$dimension->getIsManageable(),
 		'loadUrl' => 'index.php?c=dimension&a=dimension_tree_for_permissions&ajax=true&dimension_id='.$dimension->getId().'&only_without_perm=1&pg='.$pg_id."$excluded_members_param",
-		'enableDD' => true, 'ddGroup' => $genid.'_dimension_'.$dimension->getId(), 'width' => '300'
+		'loadAdditionalParameters' => array($genid."excluded_members_".$dimension->getId()),
+		'enableDD' => true, 
+		'ddGroup' => $genid.'_dimension_'.$dimension->getId(), 
+		'width' => '300',
+		'all_members' => false,
+		'root_node_text' => $dimension->getName(),//lang('All'),
+		'get_childs_params' => array('pg_id' => $pg_id, 'with_permissions' => '-1'),
+		//'use_ajax_member_tree' => true,
 	));
 ?>
 		<div class="desc" style="width:300px;"><?php echo lang('drag to left to add permissions')?></div>
@@ -83,25 +114,43 @@ foreach ( $dimensions as $dimension ) {
 	</td></tr></table>
 
 	  <div id="<?php echo $genid ?>member_permissions<?php echo $dimension->getId() ?>" class="permission-form-container" style="display: none;">
-		<div id="<?php echo $genid . "_" . $dimension->getId()?>member_name" style="font-weight: bold; font-size: 120%; padding-bottom: 5px"></div>
+		<div id="<?php echo $genid . "_" . $dimension->getId()?>member_name" class="permissions-target-name"></div>
 	
 		<table>
-			<col align=left />
-			<col align=center />
-			<tr style="border-bottom: 1px solid #888; margin-bottom: 5px">
-				<td style="vertical-align: middle"><span class="perm_all_checkbox_container"><?php 
-					echo checkbox_field($genid . $dimension->getId() . 'pAll', false, array('id' => $genid . $dimension->getId() .'pAll', 'onclick' => 'og.ogPermAllChecked("' . $genid . '", '. $dimension->getId() .', this.checked)')) 
-				?>
-					<label style="font-weight: bold" for="<?php echo $genid .$dimension->getId() ?>pAll" class="checkbox"><?php echo lang('all') ?></label>
-				</span></td>
-				<td align=center style="padding-left: 10px; padding-right: 10px; width: 100px;"><a href="#" class="internalLink radio-title-3"
-					onclick="og.ogPermSetLevel('<?php echo $genid ?>', '<?php echo $dimension->getId() ?>', 3);return false;"><?php echo lang('read write and delete') ?></a></td>
-				<td align=center style="padding-left: 10px; padding-right: 10px; width: 100px;"><a href="#" class="internalLink radio-title-2"
-					onclick="og.ogPermSetLevel('<?php echo $genid ?>', '<?php echo $dimension->getId() ?>', 2);return false;"><?php echo lang('read and write') ?></a></td>
-				<td align=center style="padding-left: 10px; padding-right: 10px; width: 100px;"><a href="#" class="internalLink radio-title-1"
-					onclick="og.ogPermSetLevel('<?php echo $genid ?>', '<?php echo $dimension->getId() ?>', 1);return false;"><?php echo lang('read only') ?></a></td>
-				<td align=center style="padding-left: 10px; padding-right: 10px; width: 100px;"><a href="#" class="internalLink radio-title-0"
-					onclick="og.ogPermSetLevel('<?php echo $genid ?>', '<?php echo $dimension->getId() ?>', 0);return false;"><?php echo lang('none no bars') ?></a></td>
+			<tr class="permissions-title-row">
+				<td></td>
+				<td align=center style="width: 120px;">
+					<a href="#" class="internalLink all-radio-sel radio-title-3" onclick="og.ogPermSetLevel('<?php echo $genid ?>', '<?php echo $dimension->getId() ?>', 3);return false;"><?php echo lang('read write and delete') ?></a>
+				</td>
+				<td align=center style="width: 120px;">
+					<a href="#" class="internalLink all-radio-sel radio-title-2" onclick="og.ogPermSetLevel('<?php echo $genid ?>', '<?php echo $dimension->getId() ?>', 2);return false;"><?php echo lang('read and write') ?></a>
+				</td>
+				<td align=center style="width: 120px;">
+					<a href="#" class="internalLink all-radio-sel radio-title-1" onclick="og.ogPermSetLevel('<?php echo $genid ?>', '<?php echo $dimension->getId() ?>', 1);return false;"><?php echo lang('read only') ?></a>
+				</td>
+				<td align=center style="width: 120px;">
+					<a href="#" class="internalLink all-radio-sel radio-title-0" onclick="og.ogPermSetLevel('<?php echo $genid ?>', '<?php echo $dimension->getId() ?>', 0);return false;"><?php echo lang('none no bars') ?></a>
+				</td>
+			</tr>
+			
+			<tr class="permissions-checkall-row">
+				<td><?php echo lang('check all').":"?></td>
+				<td align="center">
+					<input type="checkbox" class="all-radio-sel-chk" id="chk-3" title="<?php echo lang('set rwd permissions for all object types')?>"
+						onchange="og.ogPermSetLevelCheckbox(this, '<?php echo $genid ?>', '<?php echo $dimension->getId() ?>', 3);"/>
+				</td>
+				<td align="center">
+					<input type="checkbox" class="all-radio-sel-chk" id="chk-2" title="<?php echo lang('set rw permissions for all object types')?>"
+						onchange="og.ogPermSetLevelCheckbox(this, '<?php echo $genid ?>', '<?php echo $dimension->getId() ?>', 2);"/>
+				</td>
+				<td align="center">
+					<input type="checkbox" class="all-radio-sel-chk" id="chk-1" title="<?php echo lang('set r permissions for all object types')?>"
+						onchange="og.ogPermSetLevelCheckbox(this, '<?php echo $genid ?>', '<?php echo $dimension->getId() ?>', 1);"/>
+				</td>
+				<td align="center">
+					<input type="checkbox" class="all-radio-sel-chk" id="chk-0" title="<?php echo lang('set none permissions for all object types')?>"
+						onchange="og.ogPermSetLevelCheckbox(this, '<?php echo $genid ?>', '<?php echo $dimension->getId() ?>', 0);"/>
+				</td>
 			</tr>
 <?php
 	$row_cls = "";
@@ -121,20 +170,34 @@ foreach ( $dimensions as $dimension ) {
 <?php }?>
     
 	    </table>
-		<div style="width: 100%; text-align: right; margin: 15px 0;">
+	    
+		<div class="additional-member-permissions" id="<?php echo $genid?>-<?php echo $dimension->getId()?>-additional-member-permissions">
+		</div>
+	    
+		<div style="width: 100%; margin: 15px 0;">
 			<div>
-				<a href="#" class="internalLink underline" onclick="og.ogPermApplyToSubmembers('<?php echo $genid ?>', '<?php echo $dimension->getId() ?>');return false;" id="<?php echo $genid."_".$dimension->getId()?>_apply_to_submembers"></a>
+				<?php echo radio_field($genid."_".$dimension->getId().'_apply_to', true, array('id' => $genid."_".$dimension->getId()."_apply_to0", 'style' => 'vertical-align: top;margin-top: 3px;', 'value' => 'only_current', 'onchange' => 'og.onApplyToRadioChange(this, "'.$genid.'", "'.$dimension->getId().'")')); ?>
+				<label id="<?php echo $genid."_".$dimension->getId()."_apply_to_only_current_label" ?>" style="max-width:500px; display:inline-block;" for="<?php echo $genid."_".$dimension->getId()."_apply_to0"?>"></label>
 			</div>
+			<div class="clear"></div>
 			<div>
-				<a href="#" class="internalLink underline" onclick="og.ogPermApplyToAllMembers('<?php echo $genid ?>', '<?php echo $dimension->getId() ?>');return false;" id="<?php echo $genid."_".$dimension->getId()?>_apply_to_all_members"></a>
+				<?php echo radio_field($genid."_".$dimension->getId().'_apply_to', false, array('id' => $genid."_".$dimension->getId()."_apply_to1", 'style' => 'vertical-align: top;margin-top: 3px;', 'value' => 'apply_to_submembers', 'onchange' => 'og.onApplyToRadioChange(this, "'.$genid.'", "'.$dimension->getId().'")')); ?>
+				<label id="<?php echo $genid."_".$dimension->getId()."_apply_to_submembers_label" ?>" style="max-width:500px; display:inline-block;" for="<?php echo $genid."_".$dimension->getId()."_apply_to1"?>"></label>
 			</div>
+			<div class="clear"></div>
+			<div>
+				<?php echo radio_field($genid."_".$dimension->getId().'_apply_to', false, array('id' => $genid."_".$dimension->getId()."_apply_to2", 'style' => 'vertical-align: top;margin-top: 3px;', 'value' => 'apply_to_all', 'onchange' => 'og.onApplyToRadioChange(this, "'.$genid.'", "'.$dimension->getId().'")')); ?>
+				<label id="<?php echo $genid."_".$dimension->getId()."_apply_to_all_members_label" ?>" style="max-width:500px; display:inline-block;" for="<?php echo $genid."_".$dimension->getId()."_apply_to2"?>"></label>
+			</div>
+			<input type="hidden" id="<?php echo $genid."_".$dimension->getId().'_apply_to'?>" value="only_current" />
+			<div class="clear"></div>
 		</div>
 	
 		<div style="float:right;margin-top:5px;">
 			<button class="add-first-btn" onclick="$('#<?php echo $genid?>_close_link').click();" id="<?php echo $genid?>_cancel_btn" style="margin-right:10px;">
 				<img src="public/assets/themes/default/images/16x16/del.png">&nbsp;<?php echo lang('cancel')?>
 			</button>
-			<button class="add-first-btn" onclick="$('#<?php echo $genid?>_close_link').click(); og.afterChangingPermissions('<?php echo $genid?>');" id="<?php echo $genid?>_save_btn">
+			<button class="add-first-btn" onclick="og.afterChangingPermissions('<?php echo $genid?>','<?php echo $dimension->getId() ?>'); $('#<?php echo $genid?>_close_link').click();" id="<?php echo $genid?>_save_btn">
 				<img src="public/assets/themes/default/images/16x16/save.png">&nbsp;<?php echo lang('save changes')?>
 			</button>
 		</div>
@@ -150,6 +213,7 @@ if (!og.permissionDimensions) og.permissionDimensions = [];
 og.permissionDimensions.push(<?php echo $dimension->getId() ?>);
 
 
+
 $(function(){
 
 	<?php if (isset($user_type) && $user_type > 0) { ?>
@@ -159,6 +223,7 @@ $(function(){
 	var with_perm_tree = Ext.getCmp('<?php echo $genid . '_with_permissions_' . $dimension->getId() . '-tree'?>');
 	if (with_perm_tree) {
 		with_perm_tree.addClass('with-permissions-tree');
+		with_perm_tree.disable_default_events = true;
 		with_perm_tree.on('click', function(member) {
 			if (!isNaN(member.id)) {
 				og.showPermissionsPopup(genid, member.ownerTree.dimensionId, member.id, member.text);
@@ -188,6 +253,7 @@ $(function(){
 	var without_perm_tree = Ext.getCmp('<?php echo $genid . '_without_permissions_' . $dimension->getId() . '-tree'?>');
 	if (without_perm_tree) {
 		without_perm_tree.addClass('with-permissions-tree');
+		without_perm_tree.disable_default_events = true;
 		without_perm_tree.on('beforenodedrop', function(dropEvent) {
 			og.permissionsDDAddRemovePermissions(dropEvent);
 		});

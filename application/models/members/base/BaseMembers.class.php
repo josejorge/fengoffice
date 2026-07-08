@@ -18,7 +18,9 @@
     	'object_type_id' => DATA_TYPE_INTEGER,
     	'parent_member_id' => DATA_TYPE_INTEGER, 
     	'depth' => DATA_TYPE_INTEGER, 
-    	'name' => DATA_TYPE_STRING, 
+    	'name' => DATA_TYPE_STRING,  
+      'display_name' => DATA_TYPE_STRING,
+    	'description' => DATA_TYPE_STRING,
     	'object_id' => DATA_TYPE_INTEGER,
     	'archived_on' => DATA_TYPE_DATETIME,
     	'archived_by_id' => DATA_TYPE_INTEGER,
@@ -47,8 +49,12 @@
     * @param void
     * @return array
     */
-    function getColumns() {
-      return array_keys(self::$columns);
+    function getColumns($only_names = true) {
+    	if ($only_names) {
+      		return array_keys(self::$columns);
+    	} else {
+      		return self::$columns;
+      	}
     } // getColumns
     
     /**
@@ -120,7 +126,7 @@
     *
     * @access public
     * @param array $arguments
-    * @return one or Members objects
+    * @return array or Members objects
     */
     function findAll($arguments = null) {
       if(isset($this) && instance_of($this, 'Members')) {
@@ -205,7 +211,7 @@
     * @param integer $current_page Current page number
     * @return array
     */
-    function paginate($arguments = null, $items_per_page = 10, $current_page = 1) {
+    function paginate($arguments = null, $items_per_page = 10, $current_page = 1, $count = null) {
       if(isset($this) && instance_of($this, 'Members')) {
         return parent::paginate($arguments, $items_per_page, $current_page);
       } else {
@@ -218,7 +224,7 @@
     *
     * @return Members 
     */
-    function instance() {
+    static function instance() {
       static $instance;
       if(!instance_of($instance, 'Members')) {
         $instance = new Members();

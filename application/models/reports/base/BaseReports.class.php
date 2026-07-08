@@ -20,14 +20,17 @@
     	'order_by' => DATA_TYPE_STRING,
     	'is_order_by_asc' => DATA_TYPE_BOOLEAN,
     	'ignore_context' => DATA_TYPE_BOOLEAN,
+      'is_default' => DATA_TYPE_BOOLEAN,
+      'function_url' => DATA_TYPE_STRING,
     );
   
     /**
     * Construct
     *
-    * @return Report 
+    * @return Report
     */
     function __construct() {
+	  Hook::fire('object_definition', 'Report', self::$columns);
       parent::__construct('Report', 'reports', true);
     } // __construct
     
@@ -95,7 +98,7 @@
     *  - offset - limit offset, valid only if limit is present
     *  - limit
     * 
-    * @return one or  CustomPropertyValues objects
+    * @return array of Report objects
     * @throws DBQueryError
     */
     function find($arguments = null) {
@@ -111,7 +114,7 @@
     *
     * @access public
     * @param array $arguments
-    * @return one or  Reports objects
+    * @return array of Report objects
     */
     function findAll($arguments = null) {
       if(isset($this) && instance_of($this, 'Reports')) {
@@ -126,7 +129,7 @@
     *
     * @access public
     * @param array $arguments
-    * @return  Reports 
+    * @return  Report
     */
     function findOne($arguments = null) {
       if(isset($this) && instance_of($this, 'Reports')) {
@@ -142,7 +145,7 @@
     * @access public
     * @param mixed $id
     * @param boolean $force_reload If true cache will be skipped and data will be loaded from database
-    * @return  Reports 
+    * @return  Report
     */
     function findById($id, $force_reload = false) {
       if(isset($this) && instance_of($this, 'Reports')) {
@@ -196,7 +199,7 @@
     * @param integer $current_page Current page number
     * @return array
     */
-    function paginate($arguments = null, $items_per_page = 10, $current_page = 1) {
+    function paginate($arguments = null, $items_per_page = 10, $current_page = 1, $count = null) {
       if(isset($this) && instance_of($this, 'Reports')) {
         return parent::paginate($arguments, $items_per_page, $current_page);
       } else {
@@ -209,7 +212,7 @@
     *
     * @return  Reports 
     */
-    function instance() {
+    static function instance() {
       static $instance;
       if(!instance_of($instance, 'Reports')) {
         $instance = new  Reports();

@@ -3,16 +3,16 @@
   /**
    * Info: if you want to rebuild all depths and parents paths you have to reset them before call this function
   * @access public
-  * @param $table_name the table that you want to use (only project_tasks and template_tasks tables can be used)
+  * @param $table_name string the table that you want to use (only project_tasks and template_tasks tables can be used)
   * @return string with sql querys to execute
   */
   function rebuild_tasks_depth_and_parents_path($table_name, $database_connection) {
   		$upgrade_script = '';
 	  	//START calculte the depth and the parents_path for each task
 	  	$tasks_with_parents_sql = "SELECT e.object_id, e.parent_id FROM ".$table_name." e WHERE `parent_id` > 0";
-	  	$res = mysql_query($tasks_with_parents_sql , $database_connection);
+	  	$res = mysqli_query($database_connection, $tasks_with_parents_sql);
 	  	$tasks_with_parents_rows = array();
-	  	while($row = mysql_fetch_assoc($res)){
+	  	while($row = mysqli_fetch_assoc($res)){
 	  		$tasks_with_parents_rows[] = $row;
 	  	}
 	  		

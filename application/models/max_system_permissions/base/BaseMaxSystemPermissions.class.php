@@ -18,7 +18,8 @@
     	'permission_group_id' => DATA_TYPE_INTEGER,
     	'can_manage_security' => DATA_TYPE_BOOLEAN, 
     	'can_manage_configuration' => DATA_TYPE_BOOLEAN,
-    	'can_manage_templates' => DATA_TYPE_BOOLEAN,  
+    	'can_manage_templates' => DATA_TYPE_BOOLEAN,
+        'can_instantiate_templates' => DATA_TYPE_BOOLEAN,
     	'can_manage_time' => DATA_TYPE_BOOLEAN,
     	'can_add_mail_accounts' => DATA_TYPE_BOOLEAN,
     	'can_manage_dimensions' => DATA_TYPE_BOOLEAN,
@@ -27,7 +28,13 @@
 	    'can_task_assignee' => DATA_TYPE_BOOLEAN,
 	    'can_manage_billing' => DATA_TYPE_BOOLEAN,
 	    'can_view_billing' => DATA_TYPE_BOOLEAN,
-	    'can_see_assigned_to_other_tasks' => DATA_TYPE_BOOLEAN,
+      'can_see_assigned_to_other_tasks' => DATA_TYPE_BOOLEAN,
+        'can_update_other_users_invitations' => DATA_TYPE_BOOLEAN,
+        'can_link_objects' => DATA_TYPE_BOOLEAN,
+        'can_link_objects' => DATA_TYPE_BOOLEAN,
+        'can_manage_repetitive_properties_of_tasks' => DATA_TYPE_BOOLEAN,
+        'can_see_others_timeslots' => DATA_TYPE_BOOLEAN,   
+        
     );
   
     /**
@@ -52,7 +59,7 @@
     * @return array
     */
     function getColumns() {
-      return get_table_columns(self::instance()->getTableName());
+    	return array_keys(self::$columns);
     } // getColumns
     
     /**
@@ -209,7 +216,7 @@
     * @param integer $current_page Current page number
     * @return array
     */
-    function paginate($arguments = null, $items_per_page = 10, $current_page = 1) {
+    function paginate($arguments = null, $items_per_page = 10, $current_page = 1, $count = null) {
       if(isset($this) && instance_of($this, 'MaxSystemPermissions')) {
         return parent::paginate($arguments, $items_per_page, $current_page);
       } else {
@@ -222,7 +229,7 @@
     *
     * @return MaxSystemPermissions 
     */
-    function instance() {
+    static function instance() {
       static $instance;
       if(!instance_of($instance, 'MaxSystemPermissions')) {
         $instance = new MaxSystemPermissions();

@@ -9,6 +9,7 @@ class ContactMemberPermissions extends BaseContactMemberPermissions {
 	
 	private static $readable_members = array();
 	private static $writable_members = array();
+	private static $deletable_members = array();
 	
 	/**
 	 * 
@@ -19,34 +20,38 @@ class ContactMemberPermissions extends BaseContactMemberPermissions {
 	 * @param $access_level - enum: ACCESS_LEVEL_READ, ACCESS_LEVEL_WRITE, ACCESS_LEVEL_DELETE
 	 * @param $check_administrator bool - if user is super administrator do not check permission
 	 */
-	function contactCanAccessMemberAll($permission_group_ids, $member_id, $user, $access_level, $check_administrator = true) {
+	static function contactCanAccessMemberAll($permission_group_ids, $member_id, $user, $access_level, $check_administrator = true) {
 		if ($user instanceof Contact && $user->isAdministrator () && $check_administrator) {
 			return true;
 		}
 		
-		$member = Members::findById($member_id);
+		$member = Members::instance()->findById($member_id);
 		if ($member instanceof Member && !$member->getDimension()->getDefinesPermissions()) {
 			return true;
 		}
 		
+        //Disable object types
 		$disabled_ots = array();
 		$disableds = DB::executeAll("SELECT object_type_id FROM ".TABLE_PREFIX."tab_panels WHERE object_type_id>0 AND enabled=0");
 		if (is_array($disableds)) {
 			$disabled_ots = array_flat($disableds);
 		}
+		$all_allowed_object_type_ids = DB::executeAll("SELECT id FROM ".TABLE_PREFIX."object_types 
+				WHERE type IN ('content_object','located') AND name NOT IN ('template_milestone', 'template_task', 'report')
+				AND (plugin_id is NULL OR plugin_id = 0 OR plugin_id IN (SELECT id FROM ".TABLE_PREFIX."plugins WHERE is_activated > 0 AND is_installed > 0))
+				");
+		$all_allowed_object_type_ids = array_filter(array_flat($all_allowed_object_type_ids));
 		
-		$ws_ot = ObjectTypes::findByName('workspace')->getId();
-		$comment_ot = ObjectTypes::findByName('comment')->getId();
-		$disabled_ots[] = $ws_ot;
-		$disabled_ots[] = $comment_ot;
-		$disabled_ot_cond = "";
-		if (count($disabled_ots) > 0) {
-			$disabled_ot_cond = "AND object_type_id NOT IN (".implode(",",$disabled_ots).")";
+		$allowed_object_type_ids = array_diff($all_allowed_object_type_ids, $disabled_ots);
+		
+		$object_type_type_sql = "";
+		if (count($allowed_object_type_ids) > 0) {
+			$object_type_type_sql = " AND object_type_id IN (".implode(',',$allowed_object_type_ids).")";
 		}
 		
 		if ($access_level == ACCESS_LEVEL_READ) {
 			if (!isset(self::$readable_members["$permission_group_ids"])) {
-				$res = DB::execute("SELECT DISTINCT member_id FROM ".TABLE_PREFIX."contact_member_permissions WHERE permission_group_id IN (" . $permission_group_ids . ") $disabled_ot_cond" );
+				$res = DB::execute("SELECT DISTINCT member_id FROM ".TABLE_PREFIX."contact_member_permissions WHERE permission_group_id IN (" . $permission_group_ids . ") $object_type_type_sql" );
 				$rows = $res->fetchAll();
 				if (is_array($rows)) {
 					self::$readable_members["$permission_group_ids"] = array();
@@ -55,11 +60,11 @@ class ContactMemberPermissions extends BaseContactMemberPermissions {
 					}
 				}
 			}
-			return in_array($member_id, self::$readable_members["$permission_group_ids"]);						
-		} else {
+			return in_array($member_id, array_var(self::$readable_members, "$permission_group_ids", array()));
+		} elseif($access_level == ACCESS_LEVEL_WRITE) {
 			
 			if (!isset(self::$writable_members["$permission_group_ids"])) {
-				$res = DB::execute("SELECT DISTINCT member_id FROM ".TABLE_PREFIX."contact_member_permissions WHERE can_write=1 AND permission_group_id IN (" . $permission_group_ids . ") $disabled_ot_cond" );
+				$res = DB::execute("SELECT DISTINCT member_id FROM ".TABLE_PREFIX."contact_member_permissions WHERE can_write=1 AND permission_group_id IN (" . $permission_group_ids . ") $object_type_type_sql" );
 				$rows = $res->fetchAll();
 				if (is_array($rows)) {
 					self::$writable_members["$permission_group_ids"] = array();
@@ -68,12 +73,40 @@ class ContactMemberPermissions extends BaseContactMemberPermissions {
 					}
 				}
 			}
-			return in_array($member_id, self::$writable_members["$permission_group_ids"]);
+			return in_array($member_id, array_var(self::$writable_members, "$permission_group_ids", array()));
+			
+		} elseif($access_level == ACCESS_LEVEL_DELETE) {
+			
+			if (!isset(self::$deletable_members["$permission_group_ids"])) {
+				$res = DB::execute("SELECT DISTINCT member_id FROM ".TABLE_PREFIX."contact_member_permissions WHERE can_delete=1 AND permission_group_id IN (" . $permission_group_ids . ") $object_type_type_sql" );
+				$rows = $res->fetchAll();
+				if (is_array($rows)) {
+					self::$deletable_members["$permission_group_ids"] = array();
+					foreach ($rows as $row) {
+						self::$deletable_members["$permission_group_ids"][] = $row['member_id'];
+					}
+				}
+			}
+			return in_array($member_id, array_var(self::$deletable_members, "$permission_group_ids", array()));
+			
+		} else {
+			
+			if (!isset(self::$writable_members["$permission_group_ids"])) {
+				$res = DB::execute("SELECT DISTINCT member_id FROM ".TABLE_PREFIX."contact_member_permissions WHERE can_write=1 AND permission_group_id IN (" . $permission_group_ids . ") $object_type_type_sql" );
+				$rows = $res->fetchAll();
+				if (is_array($rows)) {
+					self::$writable_members["$permission_group_ids"] = array();
+					foreach ($rows as $row) {
+						self::$writable_members["$permission_group_ids"][] = $row['member_id'];
+					}
+				}
+			}
+			return in_array($member_id, array_var(self::$writable_members, "$permission_group_ids", array()));
 			
 		}
 	}
 	
-	function contactCanReadObjectTypeinMember($permission_group_ids, $member_id, $object_type_id, $can_write = false, $can_delete = false, $user = null) {
+	static function contactCanReadObjectTypeinMember($permission_group_ids, $member_id, $object_type_id, $can_write = false, $can_delete = false, $user = null) {
 		if ($user instanceof Contact && $user->isAdministrator ()) {
 			return true;
 		}
@@ -91,7 +124,7 @@ class ContactMemberPermissions extends BaseContactMemberPermissions {
 	}
 	
 	
-	function canAccessObjectTypeinMembersPermissionGroups($permission_group_ids, $member_ids, $object_type_id, $can_write = false, $can_delete = false) {
+	static function canAccessObjectTypeinMembersPermissionGroups($permission_group_ids, $member_ids, $object_type_id, $can_write = false, $can_delete = false) {
 		if (is_array($permission_group_ids)) {
 			$permission_group_ids = implode(",", $permission_group_ids);
 		}
@@ -116,7 +149,7 @@ class ContactMemberPermissions extends BaseContactMemberPermissions {
 	
 	
 	
-	function getActiveContextPermissions(Contact $contact, $object_type_id, $context, $dimension_members, $can_write = false, $can_delete = false) {
+	static function getActiveContextPermissions(Contact $contact, $object_type_id, $context, $dimension_members, $can_write = false, $can_delete = false) {
 		if ($contact instanceof Contact && $contact->isAdministrator ()) {
 			return $dimension_members;
 		}
@@ -128,9 +161,9 @@ class ContactMemberPermissions extends BaseContactMemberPermissions {
 		foreach ( $perm_ids_array as $pid ) {
 			foreach ( $dimension_members as $member_id ) {
 				//check if exists a context permission group for this object type id in this member
-				$contact_member_permission = self::findById ( array ('permission_group_id' => $pid, 'member_id' => $member_id, 'object_type_id' => $object_type_id ) );
+				$contact_member_permission = self::instance()->findById ( array ('permission_group_id' => $pid, 'member_id' => $member_id, 'object_type_id' => $object_type_id ) );
 				if ($contact_member_permission instanceof ContactMemberPermission && (! $can_write || $contact_member_permission->getCanWrite () && ! $can_delete || $contact_member_permission->getCanDelete ())) {
-					$permission_contexts = PermissionContexts::findAll ( array ('`contact_id` = ' . $contact->getId (), 'permission_group_id' => $pid, 'member_id' => $member_id ) );
+					$permission_contexts = PermissionContexts::instance()->findAll ( array ('`contact_id` = ' . $contact->getId (), 'permission_group_id' => $pid, 'member_id' => $member_id ) );
 					//check if the actual context applies to this permission group
 					if (! is_null ( $permission_contexts )) {
 						$dimensions = array ();
@@ -170,14 +203,14 @@ class ContactMemberPermissions extends BaseContactMemberPermissions {
 	 * @param array of ObjectType $types
 	 * @param array of int  $members
 	 */
-	function grantAllPermissions(Contact $contact, $members) {
+	static function grantAllPermissions(Contact $contact, $members) {
 		if ($contact->getUserType() > 0  && count($members)) {
 			$userType = $contact->getUserTypeName() ;
 			$permissions = array(); // TO fill sharing table
 			$gid = $contact->getPermissionGroupId ();
 			foreach ( $members as $member_id ) {
 				//new 
-				$member = Members::findById($member_id);
+				$member = Members::instance()->findById($member_id);
 				$dimension = $member->getDimension();
 				
 				$types = array();
@@ -188,22 +221,22 @@ class ContactMemberPermissions extends BaseContactMemberPermissions {
 							$types = $member_types;
 							break;
 						case 'Collaborator Customer': case 'Non-Exec Director':
-							foreach (ObjectTypes::findAll(array("conditions"=>" name NOT IN ('mail') ")) as $type) {//TODO This sucks 
+							foreach (ObjectTypes::instance()->findAll(array("conditions"=>" name NOT IN ('mail') ")) as $type) {//TODO This sucks 
 								$types[]=$type->getId();
 							}
 							break;
 						case 'Internal Collaborator':  case 'External Collaborator': 
-							foreach (ObjectTypes::findAll(array("conditions"=>" name NOT IN ('mail','contact', 'report') ")) as $type) {//TODO This sucks 
+							foreach (ObjectTypes::instance()->findAll(array("conditions"=>" name NOT IN ('mail','contact', 'report') ")) as $type) {//TODO This sucks 
 								$types[]=$type->getId();
 							}
 							break;
 						case 'Guest Customer':
-							foreach (ObjectTypes::findAll(array("conditions"=>" name IN ('message', 'weblink', 'event', 'file') ")) as $type) {//TODO This sucks 
+							foreach (ObjectTypes::instance()->findAll(array("conditions"=>" name IN ('message', 'weblink', 'event', 'file') ")) as $type) {//TODO This sucks 
 								$types[]=$type->getId();
 							}
 							break;
 						case 'Guest':
-							foreach (ObjectTypes::findAll(array("conditions"=>" name IN ('message', 'weblink', 'event') ")) as $type) {//TODO This sucks 
+							foreach (ObjectTypes::instance()->findAll(array("conditions"=>" name IN ('message', 'weblink', 'event') ")) as $type) {//TODO This sucks 
 								$types[]=$type->getId();
 							}
 							break;

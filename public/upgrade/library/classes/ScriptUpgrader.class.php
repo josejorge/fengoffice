@@ -88,6 +88,28 @@ final class ScriptUpgrader {
 				return;
 			}
 			
+			// Check if config has "mysql" as db adapter, if so then change it to "mysqli"
+			$config_file_handle = fopen(INSTALLATION_PATH . '/config/config.php', 'r');
+			$update_config_contents = false;
+			if ($config_file_handle) {
+				$all_config_lines = "";
+				while ((($line = fgets($config_file_handle)) !== false)) {
+					if (strpos($line, 'DB_ADAPTER') !== false) {
+						if (strpos($line, '"mysql"') !== false || strpos($line, "'mysql'") !== false) {
+							$update_config_contents = true;
+							$line = str_replace('mysql', 'mysqli', $line);
+						}
+					}
+					$all_config_lines .= $line;
+				}
+				fclose($config_file_handle);
+			}
+			if ($update_config_contents) {
+				file_put_contents(INSTALLATION_PATH . '/config/config.php', $all_config_lines);
+				$this->printMessage('Updated DB_ADAPTER setting to mysqli in config/config.php');
+			}
+			// --
+			
 			// include config file
 			$config_is_set = @include_once INSTALLATION_PATH . '/config/config.php';
 			if (!$config_is_set) {
@@ -144,8 +166,8 @@ final class ScriptUpgrader {
 			} // foreach
 			
 			// connect to database
-			if ($dbc = mysql_connect(DB_HOST, DB_USER, DB_PASS)) {
-				if (mysql_select_db(DB_NAME, $dbc)) {
+			if ($dbc = mysqli_connect(DB_HOST, DB_USER, DB_PASS)) {
+			    if (mysqli_select_db($dbc, DB_NAME)) {
 					$this->printMessage('Upgrade script has connected to the database.');
 				} else {
 					$this->printMessage('Failed to select database ' . DB_NAME);
@@ -157,10 +179,10 @@ final class ScriptUpgrader {
 			} // if
 
 			// check MySQL version
-			$mysql_version = mysql_get_server_info($dbc);
+			$mysql_version = mysqli_get_server_info($dbc);
 			if ($mysql_version && version_compare($mysql_version, "4.1", '>=')) {
 				$constants['DB_CHARSET'] = 'utf8';
-				@mysql_query("SET NAMES 'utf8'", $dbc);
+				@mysqli_query($dbc, "SET NAMES 'utf8'");
 				tpl_assign('default_collation', $default_collation = 'collate utf8_unicode_ci');
 				tpl_assign('default_charset', $default_charset = 'DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci');
 			} else {
@@ -183,11 +205,11 @@ final class ScriptUpgrader {
 				PRIMARY KEY  (`id`)
 				) ENGINE=InnoDB $default_charset;";
 
-			if (@mysql_query($test_table_sql, $dbc)) {
+			if (@mysqli_query($dbc, $test_table_sql)) {
 				$this->printMessage('Test query has been executed. Its safe to proceed with database migration.');
-				@mysql_query("DROP TABLE `$test_table_name`", $dbc);
+				@mysqli_query($dbc, "DROP TABLE `$test_table_name`");
 			} else {
-				$this->printMessage('Failed to executed test query. MySQL said: ' . mysql_error($dbc), true);
+				$this->printMessage('Failed to executed test query. MySQL said: ' . mysqli_error($dbc), true);
 				return false;
 			} // if
 			
@@ -213,14 +235,67 @@ final class ScriptUpgrader {
 				} // if
 			} // foreach
 			
+			// update the plugins that have a pending update function to execute
+			$this->updatePlugins();
+			
+			// clean autoloader
+			file_put_contents(INSTALLATION_PATH . "/cache/autoloader.php", "");
+			@unlink(INSTALLATION_PATH . "/cache/autoloader.php");
+			
 			if (isset($last_correct_version)) {
-				@mysql_query("UPDATE `".TABLE_PREFIX."config_options` SET `value` = 0 WHERE `name` = 'upgrade_last_check_new_version'");
+				@mysqli_query($dbc, "UPDATE `".TABLE_PREFIX."config_options` SET `value` = '$last_correct_version' WHERE `name` = 'installed_version'");
+			    @mysqli_query($dbc, "UPDATE `".TABLE_PREFIX."config_options` SET `value` = 0 WHERE `name` = 'upgrade_last_check_new_version'");
 				tpl_assign('version', $last_correct_version);
-				return file_put_contents(INSTALLATION_PATH . '/config/installed_version.php', tpl_fetch(get_template_path('installed_version')));
+				file_put_contents(INSTALLATION_PATH . '/config/installed_version.php', tpl_fetch(get_template_path('installed_version')));
 			}
 		} // if
 	} // upgrade
 
+
+	function updatePlugins() {
+		
+		$plugin_console_script = INSTALLATION_PATH . "/public/install/plugin-console.php";
+		$plugin_update_all_command = "php $plugin_console_script update_all";
+		
+		if (is_exec_available()) {
+			$exec_result = null;
+			$exec_return_var = null;
+
+			$command_suffix = $this->getOutput() instanceof Output_Console ? "" : " 2>&1";
+
+			exec($plugin_update_all_command . $command_suffix, $exec_result, $exec_return_var);
+
+			$is_error = $exec_return_var > 0;
+			if ($is_error) {
+				$this->printMessage("Error found when updating plugins", $is_error);
+			} else {
+				$this->printMessage("Updating plugins...");
+			}
+
+			foreach ($exec_result as $exec_result_line) {
+				$this->printMessage($exec_result_line, $is_error);
+			}
+
+			if ($is_error) {
+				if (!$exec_result) {
+					// if empty error message then tell the user to try updating plugins in terminal
+					$this->printMessage("To finish updating the plugins please try executing the following command in your terminal:", true);
+					$this->printMessage($plugin_update_all_command, true);
+				} else {
+					$this->printMessage("Please contact your administrator to solve this issue.", true);
+				}
+			} else {
+				$this->printMessage("Finished plugins update.");
+			}
+
+		} else {
+
+			$this->printMessage("Couldn't execute update for plugins due to 'exec' function is not available. ", true);
+			$this->printMessage("To finish updating the plugins please execute the following command in your terminal:", true);
+			$this->printMessage($plugin_update_all_command, true);
+
+		}
+	}
 
 
 	// ---------------------------------------------------
